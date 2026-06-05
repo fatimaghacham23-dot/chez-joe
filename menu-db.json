@@ -1,0 +1,11 @@
+[
+  {
+    "id": "item_1780702618920",
+    "name": "Cheese Burger",
+    "desc": "Delicious new menu item.",
+    "price": 11,
+    "tag": "Specialty",
+    "imageKey": "burger",
+    "isSoldOut": false
+  }
+]

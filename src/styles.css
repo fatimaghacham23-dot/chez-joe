@@ -1,0 +1,117 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --color-copper: var(--copper);
+  --color-surface: var(--surface);
+  --font-display: "Playfair Display", serif;
+  --font-sans: "Montserrat", sans-serif;
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.08 0.005 280);
+  --foreground: oklch(0.97 0 0);
+  --surface: oklch(0.11 0.005 280);
+  --card: oklch(0.11 0.005 280);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.11 0.005 280);
+  --popover-foreground: oklch(0.97 0 0);
+  --primary: oklch(0.78 0.13 85);
+  --primary-foreground: oklch(0.08 0.005 280);
+  --secondary: oklch(0.16 0.005 280);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.16 0.005 280);
+  --muted-foreground: oklch(0.68 0.01 280);
+  --accent: oklch(0.65 0.13 50);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.97 0 0);
+  --border: oklch(0.22 0.005 280);
+  --input: oklch(0.22 0.005 280);
+  --ring: oklch(0.78 0.13 85);
+  --gold: oklch(0.78 0.13 85);
+  --copper: oklch(0.62 0.13 50);
+}
+
+.light {
+  --background: oklch(0.97 0.005 90);
+  --foreground: oklch(0.1 0.005 280);
+  --surface: oklch(1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1 0.005 280);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1 0.005 280);
+  --primary: oklch(0.65 0.13 80);
+  --primary-foreground: oklch(0.97 0 0);
+  --secondary: oklch(0.94 0.005 90);
+  --secondary-foreground: oklch(0.1 0.005 280);
+  --muted: oklch(0.94 0.005 90);
+  --muted-foreground: oklch(0.5 0.005 280);
+  --accent: oklch(0.62 0.13 50);
+  --accent-foreground: oklch(0.97 0 0);
+  --border: oklch(0.88 0.005 90);
+  --input: oklch(0.88 0.005 90);
+  --ring: oklch(0.65 0.13 80);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { scroll-behavior: smooth; }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5 { font-family: var(--font-display); letter-spacing: -0.02em; }
+}
+
+@media (pointer: fine) {
+  body, body * { cursor: none !important; }
+  .admin-page, .admin-page * { cursor: auto !important; }
+}
+
+@utility text-gold { color: var(--gold); }
+@utility bg-gold { background-color: var(--gold); }
+@utility border-gold { border-color: var(--gold); }
+@utility text-copper { color: var(--copper); }
+@utility bg-copper { background-color: var(--copper); }
+
+@utility gold-gradient {
+  background: linear-gradient(135deg, oklch(0.85 0.14 90) 0%, oklch(0.78 0.13 85) 50%, oklch(0.62 0.13 50) 100%);
+}
+
+.grain {
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
