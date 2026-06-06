@@ -3,7 +3,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { getMenuData, setMenuData, DEFAULT_MENU } from "./lib/db";
 import { generateText } from "ai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
 import { assistantTools } from "./lib/ai-tools";
 
 type ServerEntry = {
@@ -247,23 +247,23 @@ export default {
       }
 
       try {
-        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        const apiKey = process.env.GROQ_API_KEY;
         if (!apiKey) {
-          return new Response(JSON.stringify({ error: "Gemini API key is not configured in environment variables." }), {
+          return new Response(JSON.stringify({ error: "Groq API key is not configured in environment variables." }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
           });
         }
 
         const { messages } = await request.json();
-        const google = createGoogleGenerativeAI({ apiKey });
-        const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+        const groq = createGroq({ apiKey });
+        const modelName = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
         let reloadMenu = false;
         let addedItem = null;
 
         const result = await generateText({
-          model: google(modelName),
+          model: groq(modelName),
           messages,
           tools: assistantTools,
           system: `You are the Chez Joe AI Voice Admin Assistant. You manage the restaurant menu database.
