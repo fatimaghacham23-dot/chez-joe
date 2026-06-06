@@ -93,15 +93,15 @@ function MenuPage() {
                 </div>
 
                 {/* Sticky Category Filter Bar */}
-                <div className="sticky top-16 z-30 py-4 bg-background/85 backdrop-blur-xl border-y border-border/80 mb-12 flex items-center justify-center gap-3 overflow-x-auto px-4 -mx-6 sm:mx-0 sm:rounded-2xl sm:border shadow-lg shadow-black/10">
+                <div className="sticky top-16 z-30 py-3 bg-background/85 backdrop-blur-xl border-y border-border/80 mb-12 flex items-center justify-between gap-2 md:gap-3 w-full px-2 sm:px-4 sm:rounded-2xl sm:border shadow-lg shadow-black/10">
                   {CATEGORIES.map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setActiveCategory(cat)}
-                      className={`magnetic px-5 py-2 rounded-full text-xs uppercase tracking-wider transition-all duration-300 shrink-0 cursor-pointer ${
+                      className={`magnetic flex-1 text-center py-2.5 rounded-full text-[10px] xs:text-xs uppercase tracking-normal xs:tracking-wider transition-all duration-300 cursor-pointer ${
                         activeCategory === cat
-                          ? "bg-gold text-[#0A0A0C] font-semibold shadow-md shadow-gold/20"
-                          : "border border-border text-muted-foreground hover:text-foreground hover:border-gold/40"
+                          ? "bg-gold text-[#0A0A0C] font-bold shadow-md shadow-gold/20"
+                          : "border border-border text-muted-foreground hover:text-foreground hover:border-gold/45"
                       }`}
                     >
                       {cat}
