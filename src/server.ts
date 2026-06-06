@@ -259,12 +259,31 @@ export default {
         const groq = createGroq({ apiKey });
         const modelName = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
+        // Sanitize messages array to strip custom fields (like audio, addedItem)
+        // that Groq's schema validator might reject.
+        const sanitizedMessages = Array.isArray(messages)
+          ? messages.map((m: any) => {
+              const clean: any = {
+                role: m.role,
+                content: m.content || "",
+              };
+              if (m.name) clean.name = m.name;
+              if (m.toolCalls) clean.toolCalls = m.toolCalls;
+              if (m.toolResults) clean.toolResults = m.toolResults;
+              return clean;
+            })
+          : [];
+
+        console.log("--- Sending Request to Groq ---");
+        console.log("Model:", modelName);
+        console.log("Messages Payload:", JSON.stringify(sanitizedMessages, null, 2));
+
         let reloadMenu = false;
         let addedItem = null;
 
         const result = await generateText({
           model: groq(modelName),
-          messages,
+          messages: sanitizedMessages,
           tools: assistantTools,
           system: `You are the Chez Joe AI Voice Admin Assistant. You manage the restaurant menu database.
 Your responses should be extremely brief, concise, and spoken-friendly since they will be converted to speech.
@@ -282,7 +301,11 @@ Safety Rules:
 Image Workflow Rules:
 - Immediately after you successfully execute the addItem tool, you MUST ask the user: "I have added the item. Would you like to upload an image for [Item Name]?"`,
           maxSteps: 5,
-          onStepFinish({ toolResults }) {
+          onStepFinish({ toolCalls, toolResults }) {
+            console.log("--- generateText Step Finished ---");
+            console.log("Tool Calls:", JSON.stringify(toolCalls, null, 2));
+            console.log("Tool Results (before sending back to Groq):", JSON.stringify(toolResults, null, 2));
+            
             if (toolResults && toolResults.length > 0) {
               toolResults.forEach((r: any) => {
                 if (r.result && r.result.success) {
@@ -368,7 +391,18 @@ Image Workflow Rules:
           },
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message || "Internal Server Error" }), {
+        console.error("--- Error in generateText / ai-assistant Endpoint ---");
+        console.error(err);
+        if (err.responseBody) {
+          console.error("Response Body:", err.responseBody);
+        }
+        if (err.data) {
+          console.error("Error Data:", err.data);
+        }
+        return new Response(JSON.stringify({ 
+          error: err.message || "Internal Server Error",
+          details: err.responseBody || err.data || null 
+        }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });

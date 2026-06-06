@@ -37,8 +37,8 @@ export const assistantTools = {
     parameters: z.object({
       name: z.string().describe('The name of the new item'),
       price: z.number().describe('The price in USD'),
-      description: z.string().describe('Short description of the dish'),
-      category: z.string().describe('Category tag (e.g. Signature, House Favorite, Side, Beverage)'),
+      description: z.string().optional().describe('Short description of the dish'),
+      category: z.string().optional().describe('Category tag (e.g. Signature, House Favorite, Side, Beverage)'),
       isConfirmed: z.boolean().describe('Set to true only if the user explicitly said Yes to confirm this addition in the last turn.')
     }),
     execute: async ({ name, price, description, category, isConfirmed }) => {
@@ -57,9 +57,9 @@ export const assistantTools = {
         const newItem = {
           id,
           name,
-          desc: description,
+          desc: description || "",
           price,
-          tag: category,
+          tag: category || "Signature",
           imageKey: 'plated', // Default fallback image key
           isSoldOut: false
         };
