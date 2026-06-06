@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useAdminContext } from "../admin";
 import { useEffect, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, ShieldAlert, Loader2, Plus, Trash2, CheckCircle2, UploadCloud, X, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
 import { tawookImg, IMAGE_MAP } from "@/components/chezjoe/Sections";
@@ -39,15 +40,8 @@ function AdminDashboardIndex() {
     isSoldOut: false,
   });
 
-  // Load menu data
-  const { data: menuData, isLoading: isLoadingMenu, error: loadError } = useQuery<MenuItem[]>({
-    queryKey: ["admin_menu"],
-    queryFn: async () => {
-      const res = await fetch("/api/menu");
-      if (!res.ok) throw new Error("Failed to load menu");
-      return res.json();
-    }
-  });
+  // Retrieve shared menu state from Layout Context
+  const { menuData, refetchMenu, isLoadingMenu, loadError } = useAdminContext();
 
   // Sync loaded data to local state
   useEffect(() => {
@@ -86,7 +80,7 @@ function AdminDashboardIndex() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
+      refetchMenu();
       showStatus("success", "Changes saved successfully!");
     },
     onError: (err: any) => {
@@ -250,7 +244,7 @@ function AdminDashboardIndex() {
             <ShieldAlert className="w-10 h-10" />
             <p className="font-medium">Failed to retrieve menu.</p>
             <button
-              onClick={() => queryClient.invalidateQueries({ queryKey: ["admin_menu"] })}
+              onClick={() => refetchMenu()}
               className="px-5 py-2.5 border border-red-500/20 bg-red-500/10 rounded-xl text-xs uppercase tracking-[0.2em] hover:bg-red-500/20 h-11"
             >
               Retry Request

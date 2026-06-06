@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useAdminContext } from "../admin";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Mic, Volume2, Phone, PhoneOff, Send, Bot, Sparkles, Loader2, Play, Pause } from "lucide-react";
@@ -16,6 +17,7 @@ interface ChatMessage {
 
 function AIAssistantPage() {
   const queryClient = useQueryClient();
+  const { refetchMenu } = useAdminContext();
   const [authPassword, setAuthPassword] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [textInput, setTextInput] = useState("");
@@ -149,10 +151,13 @@ function AIAssistantPage() {
         throw new Error("Assistant failed to process query.");
       }
 
-      const { text, audio } = await assistantRes.json();
+      const { text, audio, reloadMenu } = await assistantRes.json();
       
       // Invalidate menu queries so dashboard stays in sync
       queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
+      if (reloadMenu) {
+        refetchMenu();
+      }
 
       // Add assistant response to chat
       setMessages((prev) => [...prev, { role: "assistant", content: text, audio }]);
@@ -228,9 +233,12 @@ function AIAssistantPage() {
         throw new Error("Assistant request failed.");
       }
 
-      const { text, audio } = await res.json();
+      const { text, audio, reloadMenu } = await res.json();
       
       queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
+      if (reloadMenu) {
+        refetchMenu();
+      }
       setMessages((prev) => [...prev, { role: "assistant", content: text, audio }]);
 
       if (audio) {

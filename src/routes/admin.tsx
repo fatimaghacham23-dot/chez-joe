@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShieldAlert, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
@@ -24,6 +24,23 @@ interface MenuItem {
   isSoldOut: boolean;
 }
 
+interface AdminContextType {
+  menuData: MenuItem[] | undefined;
+  refetchMenu: () => void;
+  isLoadingMenu: boolean;
+  loadError: any;
+}
+
+const AdminContext = createContext<AdminContextType | undefined>(undefined);
+
+export function useAdminContext() {
+  const context = useContext(AdminContext);
+  if (!context) {
+    throw new Error("useAdminContext must be used within an AdminContext.Provider");
+  }
+  return context;
+}
+
 function AdminLayout() {
   const [passwordInput, setPasswordInput] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,9 +48,9 @@ function AdminLayout() {
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  // Load menu data for test verification body
-  const { data: menuData } = useQuery<MenuItem[]>({
-    queryKey: ["admin_menu_auth"],
+  // Load menu data for layout-level query sharing
+  const { data: menuData, refetch, isLoading, error } = useQuery<MenuItem[]>({
+    queryKey: ["admin_menu"],
     queryFn: async () => {
       const res = await fetch("/api/menu");
       if (!res.ok) throw new Error("Failed to load menu");
@@ -153,5 +170,9 @@ function AdminLayout() {
     );
   }
 
-  return <Outlet />;
+  return (
+    <AdminContext.Provider value={{ menuData, refetchMenu: refetch, isLoadingMenu: isLoading, loadError: error }}>
+      <Outlet />
+    </AdminContext.Provider>
+  );
 }

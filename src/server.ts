@@ -259,6 +259,8 @@ export default {
         const google = createGoogleGenerativeAI({ apiKey });
         const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
+        let reloadMenu = false;
+
         const result = await generateText({
           model: google(modelName),
           messages,
@@ -275,7 +277,19 @@ Safety Rules:
 - Before executing addItem or removeItem, you MUST verbally repeat the action and ask for confirmation from the user (e.g., "I will remove Garlic Fries. Please say Yes to confirm.").
 - Only set isConfirmed to true in the tool call if the user has explicitly confirmed the action in the conversation history (e.g. by saying "Yes", "Confirm", "Yalla", "Ok").
 - If the user has not confirmed yet, do not call the tool, or call it with isConfirmed: false so that the tool execution tells you what confirmation message to say.`,
-          maxSteps: 5
+          maxSteps: 5,
+          onStepFinish({ toolResults }) {
+            if (toolResults && toolResults.length > 0) {
+              const hasModifyingToolSucceeded = toolResults.some((r: any) =>
+                (r.toolName === "addItem" || r.toolName === "updatePrice" || r.toolName === "removeItem") &&
+                r.result &&
+                r.result.success
+              );
+              if (hasModifyingToolSucceeded) {
+                reloadMenu = true;
+              }
+            }
+          }
         });
 
         const replyText = result.text || "I have processed your request.";
@@ -286,6 +300,7 @@ Safety Rules:
           return new Response(JSON.stringify({
             text: replyText,
             audio: null,
+            reloadMenu,
             warning: "DEEPGRAM_API_KEY is not set. Using browser text-to-speech fallback."
           }), {
             status: 200,
@@ -310,6 +325,7 @@ Safety Rules:
           return new Response(JSON.stringify({
             text: replyText,
             audio: null,
+            reloadMenu,
             warning: "Deepgram TTS API failed. Using browser text-to-speech fallback."
           }), {
             status: 200,
@@ -326,7 +342,8 @@ Safety Rules:
 
         return new Response(JSON.stringify({
           text: replyText,
-          audio: audioDataUrl
+          audio: audioDataUrl,
+          reloadMenu
         }), {
           status: 200,
           headers: {
