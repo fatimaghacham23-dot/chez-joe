@@ -14,6 +14,9 @@ export const DEFAULT_MENU = [
 
 const MOCK_FILE_PATH = path.join(process.cwd(), 'menu-db.json');
 
+// In-memory cache fallback for serverless read-only environments
+let inMemoryMenu: any = null;
+
 export async function getMenuData() {
   if (process.env.KV_REST_API_URL) {
     try {
@@ -22,14 +25,20 @@ export async function getMenuData() {
         return typeof data === 'string' ? JSON.parse(data) : data;
       }
     } catch (e) {
-      console.warn("KV Connection failed, using mock persistence:", e);
+      console.warn("KV Connection failed, using fallback persistence:", e);
     }
   }
 
-  // Fallback to local mock file persistence
+  if (inMemoryMenu) {
+    return inMemoryMenu;
+  }
+
+  // Fallback to local mock file persistence (Read-only safe)
   if (fs.existsSync(MOCK_FILE_PATH)) {
     try {
-      return JSON.parse(fs.readFileSync(MOCK_FILE_PATH, 'utf-8'));
+      const fileData = JSON.parse(fs.readFileSync(MOCK_FILE_PATH, 'utf-8'));
+      inMemoryMenu = fileData;
+      return fileData;
     } catch (e) {
       console.error("Failed to read local mock file:", e);
     }
@@ -38,15 +47,21 @@ export async function getMenuData() {
 }
 
 export async function setMenuData(data: any) {
+  inMemoryMenu = data;
+
   if (process.env.KV_REST_API_URL) {
     try {
       await kv.set('menu', JSON.stringify(data));
       return;
     } catch (e) {
-      console.warn("KV Connection failed, using mock persistence:", e);
+      console.warn("KV Connection failed, using fallback persistence:", e);
     }
   }
 
-  // Fallback to local mock file persistence
-  fs.writeFileSync(MOCK_FILE_PATH, JSON.stringify(data, null, 2));
+  // Fallback to local mock file persistence (Safeguarded against EROFS on Vercel)
+  try {
+    fs.writeFileSync(MOCK_FILE_PATH, JSON.stringify(data, null, 2));
+  } catch (e: any) {
+    console.warn("Failed to write mock file (expected on serverless environments like Vercel):", e.message);
+  }
 }
