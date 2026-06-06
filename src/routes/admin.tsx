@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, ShieldAlert, Lock, Eye, EyeOff, Loader2, Plus, Trash2, CheckCircle2, UploadCloud, X } from "lucide-react";
+import { ArrowLeft, Save, ShieldAlert, Lock, Eye, EyeOff, Loader2, Plus, Trash2, CheckCircle2, UploadCloud, X, Mic, Volume2, Bot, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
 
 import heroImg from "../assets/counter.png";
@@ -57,6 +57,130 @@ function AdminDashboard() {
 
   const [localMenu, setLocalMenu] = useState<MenuItem[]>([]);
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
+
+  // AI Voice Assistant state
+  const [aiStatus, setAiStatus] = useState<"Idle" | "Listening..." | "Thinking..." | "Speaking...">("Idle");
+  const [aiHistory, setAiHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        await handleAudioProcess(audioBlob);
+        
+        // Stop all tracks on the stream to release microphone
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      setAiStatus("Listening...");
+    } catch (err) {
+      console.error("Microphone access error:", err);
+      alert("Microphone access denied or unsupported by browser.");
+      setAiStatus("Idle");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleAudioProcess = async (audioBlob: Blob) => {
+    setAiStatus("Thinking...");
+    try {
+      // 1. Transcribe the audio via backend Nova-2 STT
+      const transcribeRes = await fetch("/api/ai-transcribe", {
+        method: "POST",
+        headers: {
+          "Authorization": authPassword,
+          "Content-Type": "audio/webm",
+        },
+        body: audioBlob,
+      });
+
+      if (!transcribeRes.ok) {
+        const errData = await transcribeRes.json().catch(() => ({}));
+        throw new Error(errData.error || "Speech-to-text failed");
+      }
+
+      const { transcript } = await transcribeRes.json();
+      if (!transcript.trim()) {
+        showStatus("error", "No speech detected. Please try again.");
+        setAiStatus("Idle");
+        return;
+      }
+
+      const updatedHistory = [...aiHistory, { role: "user" as const, content: transcript }];
+      setAiHistory(updatedHistory);
+
+      // 2. Query the Assistant via backend Gemini with tools
+      const assistantRes = await fetch("/api/ai-assistant", {
+        method: "POST",
+        headers: {
+          "Authorization": authPassword,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages: updatedHistory }),
+      });
+
+      if (!assistantRes.ok) {
+        const errData = await assistantRes.json().catch(() => ({}));
+        throw new Error(errData.error || "Assistant request failed");
+      }
+
+      const { text, audio, warning } = await assistantRes.json();
+      
+      if (warning) {
+        console.warn(warning);
+      }
+
+      setAiHistory(prev => [...prev, { role: "assistant" as const, content: text }]);
+      
+      // Invalidate queries to reload table data dynamically
+      queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
+
+      // 3. Play the returned speech audio
+      if (audio) {
+        setAiStatus("Speaking...");
+        const playAudio = new Audio(audio);
+        playAudio.onended = () => setAiStatus("Idle");
+        playAudio.onerror = () => setAiStatus("Idle");
+        await playAudio.play();
+      } else {
+        // Fallback to local browser speech synthesis
+        setAiStatus("Speaking...");
+        if ('speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.onend = () => setAiStatus("Idle");
+          utterance.onerror = () => setAiStatus("Idle");
+          window.speechSynthesis.speak(utterance);
+        } else {
+          setAiStatus("Idle");
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      showStatus("error", err.message || "Failed to process voice request.");
+      setAiStatus("Idle");
+    }
+  };
 
   // Add Item Modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -230,6 +354,11 @@ function AdminDashboard() {
     setIsAuthenticated(false);
     setAuthPassword("");
     setPasswordInput("");
+    setAiHistory([]);
+    setAiStatus("Idle");
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+    }
   };
 
   // Authentication Gate Screen
@@ -365,6 +494,102 @@ function AdminDashboard() {
             <p className="text-sm font-medium">{statusMsg.text}</p>
           </div>
         )}
+
+        {/* AI Voice Assistant Control Panel */}
+        <div className="bg-surface border border-border/80 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="absolute top-0 left-0 w-32 h-32 rounded-full bg-gold/5 blur-3xl pointer-events-none" />
+          
+          <div className="flex-1 space-y-3 w-full">
+            <div className="flex items-center gap-2">
+              <Bot className="w-5 h-5 text-gold animate-pulse" />
+              <h2 className="font-display text-lg font-medium">AI Voice Assistant</h2>
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gold/10 text-gold uppercase tracking-wider">Free Tier STT/TTS</span>
+            </div>
+            <p className="text-xs text-muted-foreground max-w-xl">
+              Manage the menu hands-free. Talk in English or Lebanese-Arabish (e.g. <i>"change the burger price to 12 dollars"</i> or <i>"3adele se3er l burger l 12 dollar"</i>). Add/remove items require verbal "Yes" confirmation.
+            </p>
+
+            {/* Transcript Log Area */}
+            {aiHistory.length > 0 && (
+              <div className="bg-background/40 border border-border/60 rounded-xl p-4 max-h-[140px] overflow-y-auto space-y-3 text-xs no-scrollbar">
+                {aiHistory.slice(-4).map((msg, idx) => (
+                  <div key={idx} className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'assistant' && (
+                      <div className="w-5 h-5 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-3 h-3 text-gold" />
+                      </div>
+                    )}
+                    <div className={`px-3 py-1.5 rounded-lg max-w-[85%] leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-gold/15 text-gold border border-gold/25'
+                        : 'bg-surface border border-border text-foreground'
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Glowing Microphone Button & Status Panel */}
+          <div className="flex flex-col items-center gap-3 shrink-0 w-full md:w-auto">
+            <div className="relative">
+              {/* Outer pulsing ring for visual indicators */}
+              {isRecording && (
+                <span className="absolute inset-0 rounded-full bg-red-500/20 animate-ping" />
+              )}
+              {aiStatus === "Thinking..." && (
+                <span className="absolute inset-0 rounded-full bg-gold/25 animate-pulse" />
+              )}
+              {aiStatus === "Speaking..." && (
+                <span className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+              )}
+
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`w-16 h-16 rounded-full border flex items-center justify-center transition-all duration-300 shadow-lg cursor-pointer ${
+                  isRecording
+                    ? "bg-red-500/20 border-red-500 text-red-500 shadow-red-500/10 hover:bg-red-500/30 scale-105"
+                    : aiStatus === "Thinking..."
+                    ? "bg-gold/10 border-gold text-gold cursor-wait animate-pulse"
+                    : aiStatus === "Speaking..."
+                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-emerald-500/10"
+                    : "bg-surface border-border hover:border-gold hover:text-gold text-muted-foreground hover:scale-[1.03]"
+                }`}
+                aria-label="Toggle Voice Control"
+              >
+                {isRecording ? (
+                  <Mic className="w-6 h-6 animate-pulse" />
+                ) : aiStatus === "Thinking..." ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : aiStatus === "Speaking..." ? (
+                  <Volume2 className="w-6 h-6" />
+                ) : (
+                  <Mic className="w-6 h-6" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <span className={`text-[10px] uppercase tracking-widest font-bold ${
+                isRecording
+                  ? "text-red-500 animate-pulse"
+                  : aiStatus === "Thinking..."
+                  ? "text-gold"
+                  : aiStatus === "Speaking..."
+                  ? "text-emerald-400"
+                  : "text-muted-foreground"
+              }`}>
+                {isRecording ? "Listening..." : aiStatus}
+              </span>
+              <span className="text-[9px] text-muted-foreground mt-0.5">
+                {isRecording ? "Click to finish speaking" : "Click to talk"}
+              </span>
+            </div>
+          </div>
+        </div>
 
         {/* Database table view */}
         <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xl">
