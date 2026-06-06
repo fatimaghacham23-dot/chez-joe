@@ -257,7 +257,7 @@ export default {
 
         const { messages } = await request.json();
         const groq = createGroq({ apiKey });
-        const modelName = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+        const modelName = "llama-3.3-70b-versatile";
 
         // Sanitize messages array to strip custom fields (like audio, addedItem)
         // that Groq's schema validator might reject.
@@ -282,12 +282,12 @@ export default {
         let addedItem = null;
 
         const result = await generateText({
-          model: groq(modelName),
+          model: groq('llama-3.3-70b-versatile'),
           messages: sanitizedMessages,
           tools: {
             getMenu: tool({
               description: 'Retrieve the current list of menu items with their details.',
-              parameters: z.object({}),
+              inputSchema: z.object({}),
               execute: async () => {
                 const menu = await getMenuData();
                 return { success: true, menu };
@@ -295,7 +295,7 @@ export default {
             }),
             updatePrice: tool({
               description: 'Update the price of an existing menu item.',
-              parameters: z.object({
+              inputSchema: z.object({
                 itemName: z.string().describe('The name of the menu item (e.g. burger, tawook, halloumi)'),
                 newPrice: z.number().describe('The new price in USD')
               }),
@@ -312,16 +312,29 @@ export default {
                 return { success: true, message: `Updated the price of ${item.name} to $${newPrice.toFixed(2)}.` };
               }
             }),
-            addItem: tool({
+            // Explicitly define the tool with the schema inside the generateText call.
+            addItem: {
               description: 'Add a new item to the menu',
-              parameters: z.object({
-                name: z.string().describe('The name of the menu item'),
-                price: z.union([z.string(), z.number()]).describe('The price of the item'),
-                isConfirmed: z.boolean().describe('Whether the user has confirmed the addition'),
-                description: z.string().optional().describe('Optional description of the item'),
-                category: z.string().optional().describe('Optional category'),
+              inputSchema: z.object({
+                name: z.string(),
+                price: z.union([z.string(), z.number()]),
+                isConfirmed: z.boolean(),
+                description: z.string().optional(),
+                category: z.string().optional(),
               }),
-              execute: async ({ name, price, isConfirmed, description, category }) => {
+              execute: async ({
+                name,
+                price,
+                isConfirmed,
+                description,
+                category,
+              }: {
+                name: string;
+                price: string | number;
+                isConfirmed: boolean;
+                description?: string;
+                category?: string;
+              }) => {
                 const numericPrice = parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0;
                 if (!isConfirmed) {
                   return { success: false, requiresConfirmation: true, message: `Please confirm that you want to add ${name} for $${numericPrice.toFixed(2)}.` };
@@ -352,10 +365,10 @@ export default {
                   return { success: false, error: `Database write failed: ${err.message}` };
                 }
               }
-            }),
+            },
             updateItemImage: tool({
               description: 'Update the image URL or base64 key of an existing menu item.',
-              parameters: z.object({
+              inputSchema: z.object({
                 itemId: z.string().describe('The ID of the menu item (e.g. garlic_fries)'),
                 imageKey: z.string().describe('The new image URL, base64 data string, or preset key')
               }),
@@ -378,7 +391,7 @@ export default {
             }),
             removeItem: tool({
               description: 'Remove a menu item from the restaurant database. Safety reminder: verbally ask the user to confirm with Yes before calling this tool with isConfirmed = true.',
-              parameters: z.object({
+              inputSchema: z.object({
                 itemName: z.string().describe('The name of the item to remove'),
                 isConfirmed: z.boolean().describe('Set to true only if the user explicitly said Yes to confirm this removal in the last turn.')
               }),
