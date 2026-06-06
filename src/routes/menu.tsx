@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { Preloader } from "@/components/chezjoe/Preloader";
 import { CustomCursor } from "@/components/chezjoe/CustomCursor";
 import {
-  Header, Footer, BookingProvider, CartDrawer, ItemDetailModal, IMAGE_MAP, tawookImg, MenuItem
+  Header, Footer, BookingProvider, CartDrawer, ItemDetailModal, MenuItem, resolveMenuImage
 } from "@/components/chezjoe/Sections";
 
 export const Route = createFileRoute("/menu")({
@@ -149,7 +149,7 @@ function MenuPage() {
                         <div>
                           <div className="overflow-hidden aspect-[4/3] relative">
                             <img
-                              src={m.imageKey.startsWith("data:") ? m.imageKey : (IMAGE_MAP[m.imageKey] || tawookImg)}
+                              src={resolveMenuImage(m.imageKey)}
                               alt={m.name}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                               loading="lazy"

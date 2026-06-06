@@ -116,3 +116,36 @@
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes call-wave-bar {
+  0%, 100% { transform: scaleY(0.34); opacity: 0.5; }
+  35% { transform: scaleY(1); opacity: 1; }
+  65% { transform: scaleY(0.58); opacity: 0.72; }
+}
+
+@keyframes call-wave-ring {
+  0% { transform: scale(0.86); opacity: 0.68; }
+  100% { transform: scale(1.12); opacity: 0; }
+}
+
+.call-wave-bar {
+  width: 4px;
+  border-radius: 999px;
+  transform-origin: center;
+  animation: call-wave-bar 1.08s ease-in-out infinite;
+  box-shadow: 0 0 18px color-mix(in oklch, currentColor 46%, transparent);
+}
+
+.call-wave-muted {
+  animation-play-state: paused;
+  opacity: 0.28;
+  transform: scaleY(0.36);
+}
+
+.call-wave-ring {
+  animation: call-wave-ring 1.8s ease-out infinite;
+}
+
+.call-wave-ring-delay {
+  animation-delay: 0.6s;
+}

@@ -2,6 +2,21 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { getMenuData, setMenuData, DEFAULT_MENU } from "./lib/db";
+import {
+  assistantTools,
+  createMenuEvent,
+  createMenuItemId,
+  executeMenuTool,
+  findMenuItem,
+  isMenuMutationTool,
+  normalizePrice,
+  REALTIME_VOICE_SYSTEM_PROMPT,
+  realtimeToolDefinitions,
+  toMenuRecord,
+  type MenuEventPayload,
+  type MenuRecord,
+  type MenuToolName,
+} from "./lib/ai-tools";
 import { generateText, stepCountIs, tool } from "ai";
 import { createGroq } from "@ai-sdk/groq";
 import { z } from "zod";
@@ -21,59 +36,44 @@ async function getServerEntry(): Promise<ServerEntry> {
   return serverEntryPromise;
 }
 
-type MenuRecord = {
-  id: string;
-  name: string;
-  desc: string;
-  price: number;
-  tag: string;
-  imageKey: string;
-  isSoldOut: boolean;
+const jsonHeaders = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
 };
 
-type MenuEventPayload = {
-  type: "addItem" | "updateItemPrice" | "removeItem" | "updateItemImage";
-  itemId?: string;
-  itemName?: string;
-  item?: MenuRecord;
-  removedItem?: MenuRecord;
-  newPrice?: number;
-  imageKey?: string;
-  message?: string;
-};
+function isAuthorizedAdmin(request: Request) {
+  const authHeader = request.headers.get("Authorization") || request.headers.get("authorization");
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const passwordToCheck = adminPassword || "1234";
 
-function normalizePrice(price: string | number) {
-  return parseFloat(String(price).replace(/[^0-9.]/g, "")) || 0;
-}
-
-function createMenuItemId(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function findMenuItem(menu: any[], itemName: string) {
-  const normalizedName = itemName.toLowerCase();
-  const normalizedId = createMenuItemId(itemName);
-  return menu.find(
-    (m: any) =>
-      m.name.toLowerCase().includes(normalizedName) ||
-      m.id.toLowerCase() === normalizedName ||
-      m.id.toLowerCase() === normalizedId,
+  return Boolean(
+    authHeader && (authHeader === passwordToCheck || authHeader === `Bearer ${passwordToCheck}`),
   );
 }
 
-function toMenuRecord(item: any): MenuRecord {
-  return {
-    id: item.id,
-    name: item.name,
-    desc: item.desc || "",
-    price: normalizePrice(item.price),
-    tag: item.tag || "Signature",
-    imageKey: item.imageKey || "plated",
-    isSoldOut: Boolean(item.isSoldOut),
-  };
+function unauthorizedResponse() {
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: jsonHeaders,
+  });
+}
+
+function methodNotAllowedResponse() {
+  return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+    status: 405,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function optionsResponse(allowedMethods = "POST, OPTIONS") {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": allowedMethods,
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
 }
 
 // h3 swallows in-handler throws into a normal 500 Response with body
@@ -197,6 +197,194 @@ export default {
         return new Response(JSON.stringify({ error: err.message || "Internal Server Error" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (url.pathname === "/api/ai-tool") {
+      if (request.method === "OPTIONS") {
+        return optionsResponse();
+      }
+      if (request.method !== "POST") {
+        return methodNotAllowedResponse();
+      }
+
+      if (!isAuthorizedAdmin(request)) {
+        return unauthorizedResponse();
+      }
+
+      try {
+        const { toolName, args = {} } = await request.json();
+        const result = await executeMenuTool(toolName as MenuToolName, args);
+        const menuEvent = createMenuEvent(toolName, args, result);
+
+        return new Response(
+          JSON.stringify({
+            success: Boolean(result.success),
+            toolName,
+            result,
+            reloadMenu: Boolean(menuEvent),
+            menuEvent,
+          }),
+          {
+            status: result.success === false ? 400 : 200,
+            headers: jsonHeaders,
+          },
+        );
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Internal Server Error" }), {
+          status: 500,
+          headers: jsonHeaders,
+        });
+      }
+    }
+
+    if (url.pathname === "/api/realtime-session") {
+      if (request.method === "OPTIONS") {
+        return optionsResponse();
+      }
+      if (request.method !== "POST") {
+        return methodNotAllowedResponse();
+      }
+
+      if (!isAuthorizedAdmin(request)) {
+        return unauthorizedResponse();
+      }
+
+      try {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          return new Response(
+            JSON.stringify({ error: "OPENAI_API_KEY is not configured in environment variables." }),
+            {
+              status: 400,
+              headers: jsonHeaders,
+            },
+          );
+        }
+
+        const model = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
+        const voice = process.env.OPENAI_REALTIME_VOICE || "marin";
+        const sessionConfig = {
+          session: {
+            type: "realtime",
+            model,
+            instructions: `${REALTIME_VOICE_SYSTEM_PROMPT}
+
+Decision rules:
+- Use getMenu before answering menu availability, price, description, or sold-out questions.
+- Use editItem for direct menu edits such as price, name, or description changes.
+- Use updateItemImage for item photos when an image URL or base64 image is provided.
+- After a successful tool call, briefly state the completed action.`,
+            audio: {
+              output: {
+                voice,
+              },
+            },
+            tools: realtimeToolDefinitions,
+            tool_choice: "auto",
+          },
+        };
+
+        const realtimeRes = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(sessionConfig),
+        });
+
+        const data = await realtimeRes.json().catch(async () => ({
+          error: await realtimeRes.text(),
+        }));
+
+        if (!realtimeRes.ok) {
+          return new Response(
+            JSON.stringify({
+              error: "Failed to create OpenAI Realtime client secret.",
+              details: data,
+            }),
+            {
+              status: realtimeRes.status,
+              headers: jsonHeaders,
+            },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            ...data,
+            model,
+            voice,
+            instructions: sessionConfig.session.instructions,
+            toolDefinitions: realtimeToolDefinitions,
+          }),
+          {
+            status: 200,
+            headers: jsonHeaders,
+          },
+        );
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Internal Server Error" }), {
+          status: 500,
+          headers: jsonHeaders,
+        });
+      }
+    }
+
+    if (url.pathname === "/api/deepgram-token") {
+      if (request.method === "OPTIONS") {
+        return optionsResponse();
+      }
+      if (request.method !== "POST") {
+        return methodNotAllowedResponse();
+      }
+
+      if (!isAuthorizedAdmin(request)) {
+        return unauthorizedResponse();
+      }
+
+      try {
+        const deepgramKey = process.env.DEEPGRAM_API_KEY;
+        if (!deepgramKey) {
+          return new Response(
+            JSON.stringify({
+              error: "DEEPGRAM_API_KEY is not configured in environment variables.",
+            }),
+            {
+              status: 400,
+              headers: jsonHeaders,
+            },
+          );
+        }
+
+        const tokenRes = await fetch("https://api.deepgram.com/v1/auth/grant", {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${deepgramKey}`,
+          },
+        });
+        const data = await tokenRes.json().catch(async () => ({ error: await tokenRes.text() }));
+
+        if (!tokenRes.ok) {
+          return new Response(
+            JSON.stringify({ error: "Failed to create Deepgram temporary token.", details: data }),
+            {
+              status: tokenRes.status,
+              headers: jsonHeaders,
+            },
+          );
+        }
+
+        return new Response(JSON.stringify(data), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Internal Server Error" }), {
+          status: 500,
+          headers: jsonHeaders,
         });
       }
     }
@@ -429,6 +617,7 @@ export default {
                 };
               },
             }),
+            editItem: assistantTools.editItem,
             // Explicitly define the tool with the schema inside the generateText call.
             addItem: {
               description: "Add a new item to the menu",
@@ -494,17 +683,22 @@ export default {
               },
             },
             updateItemImage: tool({
-              description: "Update the image URL or base64 key of an existing menu item.",
+              description:
+                "Update the image of an existing menu item using a preset key, a base64 image data URL, or an http/https image URL.",
               inputSchema: z.object({
-                itemId: z.string().describe("The ID of the menu item (e.g. garlic_fries)"),
+                itemId: z.string().describe("The ID or name of the menu item (e.g. garlic_fries)"),
                 imageKey: z
                   .string()
-                  .describe("The new image URL, base64 data string, or preset key"),
+                  .optional()
+                  .describe("The preset image key, image URL, or base64 data URL"),
+                imageUrl: z.string().optional().describe("An http or https image URL"),
+                base64Image: z.string().optional().describe("A base64 data URL"),
               }),
-              execute: async ({ itemId, imageKey }) => {
+              execute: async ({ itemId, imageKey, imageUrl, base64Image }) => {
                 try {
                   const menu = (await getMenuData()) || [];
                   const item = findMenuItem(menu, itemId);
+                  const nextImageKey = imageKey || imageUrl || base64Image;
 
                   if (!item) {
                     return {
@@ -513,13 +707,20 @@ export default {
                     };
                   }
 
-                  item.imageKey = imageKey;
+                  if (!nextImageKey) {
+                    return {
+                      success: false,
+                      error: "Image source must be a preset key, an image URL, or a base64 data URL.",
+                    };
+                  }
+
+                  item.imageKey = nextImageKey;
                   await setMenuData(menu);
                   return {
                     success: true,
                     itemId: item.id,
                     itemName: item.name,
-                    imageKey,
+                    imageKey: nextImageKey,
                     item: toMenuRecord(item),
                     message: `Successfully updated the image for "${item.name}".`,
                   };
@@ -576,24 +777,26 @@ You understand English, French, and Lebanese Arabic written in Latin characters.
 When the user asks to add, update, or remove items, use the menu tools. Once a tool is called, provide the result clearly and always ask if the user needs further modifications to the menu.
 
 Confirmation rules:
-- Before addItem, updateItemPrice, or removeItem changes the menu, ask the user to confirm the exact action.
+- Before addItem or removeItem changes the menu, ask the user to confirm the exact action.
 - Call these tools with isConfirmed: false when confirmation is missing.
 - Set isConfirmed: true only when the user explicitly confirms in the conversation history.
+- Use editItem for direct, unambiguous name, price, or description edits. It does not need an isConfirmed field.
 - Do not require confirmation for updateItemImage after the user has selected an upload file.
 
 Image workflow:
 - Immediately after a successful addItem tool call, say exactly: "Item added successfully! Would you like to upload a photo for this item?"
 
 Examples:
-- "3adele se3er l burger l 11 dollar" -> updateItemPrice for Heritage Burger to 11.
+- "3adele se3er l burger l 11 dollar" -> editItem for Heritage Burger with newPrice 11.
 - "zid hummus 8 dollar" -> addItem for Hummus to 8.
 - "m7e l garlic fries" -> removeItem for Garlic Fries.
 
 Tool schema rules:
 - addItem fields: name, price, isConfirmed, optional description, optional category.
+- editItem fields: targetItemName, optional newName, optional newPrice, optional newDescription.
 - updateItemPrice fields: itemName, newPrice, isConfirmed.
 - removeItem fields: itemName, isConfirmed.
-- updateItemImage fields: itemId, imageKey.
+- updateItemImage fields: itemId plus one of imageKey, imageUrl, or base64Image.
 - Prices may be numbers or strings.`,
           stopWhen: stepCountIs(5),
           onStepFinish({ toolCalls, toolResults }) {
@@ -607,62 +810,37 @@ Tool schema rules:
             if (toolResults && toolResults.length > 0) {
               toolResults.forEach((r: any) => {
                 if (r.result && r.result.success) {
-                  if (
-                    r.toolName === "addItem" ||
-                    r.toolName === "updateItemPrice" ||
-                    r.toolName === "removeItem" ||
-                    r.toolName === "updateItemImage"
-                  ) {
+                  if (isMenuMutationTool(r.toolName)) {
                     assistantState.reloadMenu = true;
                   }
                   const args = r.args ?? r.input ?? {};
+                  const sharedMenuEvent = createMenuEvent(r.toolName, args, r.result);
                   if (r.toolName === "addItem") {
-                    const createdItem = r.result.item || {
-                      id: r.result.itemId || createMenuItemId(args.name),
-                      name: args.name,
-                      price: normalizePrice(args.price),
-                      desc: args.description || "",
-                      tag: args.category || "Signature",
-                      imageKey: "plated",
-                      isSoldOut: false,
-                    };
+                    const createdItem =
+                      sharedMenuEvent?.item ||
+                      r.result.item || {
+                        id: r.result.itemId || createMenuItemId(args.name),
+                        name: args.name,
+                        price: normalizePrice(args.price),
+                        desc: args.description || "",
+                        tag: args.category || "Signature",
+                        imageKey: "plated",
+                        isSoldOut: false,
+                      };
                     assistantState.addedItem = createdItem;
-                    assistantState.menuEvent = {
-                      type: "addItem",
-                      itemId: createdItem.id,
-                      itemName: createdItem.name,
-                      item: createdItem,
-                      message: r.result.message,
-                    };
+                    assistantState.menuEvent = sharedMenuEvent;
+                  }
+                  if (r.toolName === "editItem") {
+                    assistantState.menuEvent = sharedMenuEvent;
                   }
                   if (r.toolName === "updateItemPrice") {
-                    assistantState.menuEvent = {
-                      type: "updateItemPrice",
-                      itemId: r.result.itemId,
-                      itemName: r.result.itemName || args.itemName,
-                      item: r.result.item,
-                      newPrice: r.result.newPrice ?? normalizePrice(args.newPrice),
-                      message: r.result.message,
-                    };
+                    assistantState.menuEvent = sharedMenuEvent;
                   }
                   if (r.toolName === "removeItem") {
-                    assistantState.menuEvent = {
-                      type: "removeItem",
-                      itemId: r.result.itemId,
-                      itemName: r.result.itemName || args.itemName,
-                      removedItem: r.result.removedItem,
-                      message: r.result.message,
-                    };
+                    assistantState.menuEvent = sharedMenuEvent;
                   }
                   if (r.toolName === "updateItemImage") {
-                    assistantState.menuEvent = {
-                      type: "updateItemImage",
-                      itemId: r.result.itemId,
-                      itemName: r.result.itemName || args.itemId,
-                      item: r.result.item,
-                      imageKey: r.result.imageKey || args.imageKey,
-                      message: r.result.message,
-                    };
+                    assistantState.menuEvent = sharedMenuEvent;
                   }
                 }
               });

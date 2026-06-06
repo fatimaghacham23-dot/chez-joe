@@ -15,9 +15,10 @@ import {
   Play,
   Pause,
   UploadCloud,
+  ImagePlus,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
-import { IMAGE_MAP, tawookImg } from "@/components/chezjoe/Sections";
+import { resolveMenuImage } from "@/components/chezjoe/Sections";
 
 export const Route = createFileRoute("/admin/ai")({
   component: AIAssistantPage,
@@ -31,7 +32,12 @@ interface ChatMessage {
   menuEvent?: MenuEvent | null;
 }
 
-type MenuEventType = "addItem" | "updateItemPrice" | "removeItem" | "updateItemImage";
+type MenuEventType =
+  | "addItem"
+  | "editItem"
+  | "updateItemPrice"
+  | "removeItem"
+  | "updateItemImage";
 
 interface MenuPreviewItem {
   id: string;
@@ -110,11 +116,12 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 function AIAssistantPage() {
   const queryClient = useQueryClient();
-  const { refetchMenu } = useAdminContext();
+  const { menuData, refetchMenu } = useAdminContext();
   const [authPassword, setAuthPassword] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [textInput, setTextInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
 
   // Voice States
   const [isCallActive, setIsCallActive] = useState(false);
@@ -126,6 +133,7 @@ function AIAssistantPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement>(null);
 
   const syncMenuEvent = (menuEvent?: MenuEvent | null) => {
     if (menuEvent) {
@@ -375,6 +383,123 @@ function AIAssistantPage() {
     }
   };
 
+  const readImageFile = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image file."));
+      reader.readAsDataURL(file);
+    });
+
+  const getImageTargetName = () => {
+    const typedTarget = textInput.trim();
+    if (typedTarget && menuData?.length) {
+      const normalizedText = typedTarget.toLowerCase();
+      const matchedItem = menuData.find(
+        (item) =>
+          normalizedText.includes(item.name.toLowerCase()) ||
+          normalizedText.includes(item.id.toLowerCase()),
+      );
+      if (matchedItem) return matchedItem.name;
+    }
+
+    if (typedTarget) return typedTarget;
+
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const event = messages[i].menuEvent || legacyAddEvent(messages[i].addedItem);
+      if (event?.itemName) return event.itemName;
+      if (event?.item?.name) return event.item.name;
+      if (event?.removedItem?.name) return event.removedItem.name;
+    }
+
+    return "";
+  };
+
+  const handleImageFileProvided = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Image is too large. Please upload an image under 2MB.");
+      return;
+    }
+
+    const targetItemName = getImageTargetName();
+    if (!targetItemName) {
+      alert("Type the item name in the message box before attaching a photo.");
+      return;
+    }
+
+    const instruction = `The user has provided an image for ${targetItemName}. Use the updateItemImage tool to update this item.`;
+    setIsSending(true);
+    setAiStatus("Thinking...");
+
+    try {
+      const imageKey = await readImageFile(file);
+      setTextInput("");
+      setMessages((prev) => [...prev, { role: "user", content: instruction }]);
+
+      const res = await fetch("/api/ai-tool", {
+        method: "POST",
+        headers: {
+          Authorization: authPassword,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          toolName: "updateItemImage",
+          args: {
+            itemId: targetItemName,
+            imageKey,
+          },
+        }),
+      });
+
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(result.result?.error || result.error || "Failed to update item image.");
+      }
+
+      if (result.reloadMenu || result.menuEvent) {
+        syncMenuEvent(result.menuEvent);
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            result.result?.message ||
+            `Updated the image for ${targetItemName}. Do you need any further modifications to the menu?`,
+          menuEvent: result.menuEvent,
+        },
+      ]);
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Failed to update image."));
+    } finally {
+      setIsSending(false);
+      setAiStatus("Idle");
+    }
+  };
+
+  const handleComposerFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) {
+      await handleImageFileProvided(file);
+    }
+  };
+
+  const handleComposerDrop = async (e: React.DragEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsDragActive(false);
+    const file = Array.from(e.dataTransfer.files).find((item) => item.type.startsWith("image/"));
+    if (file) {
+      await handleImageFileProvided(file);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col admin-page relative">
       <div className="absolute top-0 left-0 w-64 h-64 rounded-full bg-gold/5 blur-3xl pointer-events-none" />
@@ -397,26 +522,13 @@ function AIAssistantPage() {
         <div className="flex items-center gap-3">
           <ThemeToggle />
 
-          {/* Topbar Call Toggle Button */}
-          <button
-            onClick={() => setIsCallActive(!isCallActive)}
-            className={`flex items-center justify-center rounded-xl transition-all cursor-pointer h-11 px-4 text-xs font-semibold uppercase tracking-wider border gap-2 shadow-md ${
-              isCallActive
-                ? "bg-red-500/10 border-red-500 text-red-500 shadow-red-500/5 animate-pulse"
-                : "bg-surface border-border text-muted-foreground hover:text-foreground hover:border-gold"
-            }`}
-            aria-label="Toggle Call Session"
+          <Link
+            to="/admin/call"
+            className="flex items-center justify-center rounded-xl transition-all cursor-pointer h-11 px-4 text-xs font-semibold uppercase tracking-wider border gap-2 shadow-md bg-surface border-border text-muted-foreground hover:text-foreground hover:border-gold"
+            aria-label="Open Call Session"
           >
-            {isCallActive ? (
-              <>
-                <PhoneOff className="w-4 h-4" /> End Call
-              </>
-            ) : (
-              <>
-                <Phone className="w-4 h-4 text-gold" /> Start Call
-              </>
-            )}
-          </button>
+            <Phone className="w-4 h-4 text-gold" /> Call
+          </Link>
         </div>
       </header>
 
@@ -432,8 +544,7 @@ function AIAssistantPage() {
                 Talk to Chez Joe
               </h2>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto mt-2 leading-relaxed">
-                Type your command below, or click the **Start Call** button in the topbar to
-                interact using your voice.
+                Type your command below, or open the dedicated call screen from the topbar.
               </p>
             </div>
           </div>
@@ -507,8 +618,33 @@ function AIAssistantPage() {
       <footer className="p-4 bg-surface border-t border-border sticky bottom-0">
         <form
           onSubmit={handleSendText}
-          className="max-w-3xl w-full mx-auto flex items-center gap-2"
+          onDrop={handleComposerDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onDragEnter={() => setIsDragActive(true)}
+          onDragLeave={() => setIsDragActive(false)}
+          className={`max-w-3xl w-full mx-auto flex items-center gap-2 rounded-2xl border p-1.5 transition-all ${
+            isDragActive
+              ? "border-gold bg-gold/10 shadow-lg shadow-gold/10"
+              : "border-transparent bg-transparent"
+          }`}
         >
+          <input
+            ref={composerFileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleComposerFileChange}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => composerFileInputRef.current?.click()}
+            disabled={isSending || isRecording}
+            className="h-12 w-12 rounded-xl border border-border bg-background text-muted-foreground hover:text-gold hover:border-gold transition-all flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50"
+            aria-label="Upload item image"
+            title="Upload item image"
+          >
+            <ImagePlus className="w-5 h-5" />
+          </button>
           <input
             type="text"
             value={textInput}
@@ -673,6 +809,8 @@ function LivePreviewCard({
   const badgeLabel =
     menuEvent.type === "addItem"
       ? "Added"
+      : menuEvent.type === "editItem"
+        ? "Edited"
       : menuEvent.type === "updateItemPrice"
         ? "Price Updated"
         : menuEvent.type === "updateItemImage"
@@ -750,9 +888,7 @@ function LivePreviewCard({
     onMenuEvent(result.menuEvent || optimisticEvent);
   };
 
-  const imageSrc = currentItem.imageKey.startsWith("data:")
-    ? currentItem.imageKey
-    : IMAGE_MAP[currentItem.imageKey] || tawookImg;
+  const imageSrc = resolveMenuImage(currentItem.imageKey);
 
   return (
     <div

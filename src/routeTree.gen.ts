@@ -13,6 +13,7 @@ import { Route as MenuRouteImport } from './routes/menu'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminCallRouteImport } from './routes/admin/call'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
 
 const MenuRoute = MenuRouteImport.update({
@@ -35,6 +36,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCallRoute = AdminCallRouteImport.update({
+  id: '/call',
+  path: '/call',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAiRoute = AdminAiRouteImport.update({
   id: '/ai',
   path: '/ai',
@@ -46,12 +52,14 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/menu': typeof MenuRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/call': typeof AdminCallRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/menu': typeof MenuRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/call': typeof AdminCallRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -60,14 +68,22 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/menu': typeof MenuRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/call': typeof AdminCallRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/menu' | '/admin/ai' | '/admin/'
+  fullPaths: '/' | '/admin' | '/menu' | '/admin/ai' | '/admin/call' | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/menu' | '/admin/ai' | '/admin'
-  id: '__root__' | '/' | '/admin' | '/menu' | '/admin/ai' | '/admin/'
+  to: '/' | '/menu' | '/admin/ai' | '/admin/call' | '/admin'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/menu'
+    | '/admin/ai'
+    | '/admin/call'
+    | '/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +122,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/call': {
+      id: '/admin/call'
+      path: '/call'
+      fullPath: '/admin/call'
+      preLoaderRoute: typeof AdminCallRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/ai': {
       id: '/admin/ai'
       path: '/ai'
@@ -118,11 +141,13 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAiRoute: typeof AdminAiRoute
+  AdminCallRoute: typeof AdminCallRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAiRoute: AdminAiRoute,
+  AdminCallRoute: AdminCallRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

@@ -299,7 +299,7 @@ export function Menu() {
                   <div>
                     <div className="overflow-hidden aspect-[4/3] relative">
                       <img
-                        src={m.imageKey.startsWith("data:") ? m.imageKey : (IMAGE_MAP[m.imageKey] || tawookImg)}
+                        src={resolveMenuImage(m.imageKey)}
                         alt={m.name}
                         className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-700"
                         loading="lazy"
@@ -606,6 +606,18 @@ export const IMAGE_MAP: Record<string, string> = {
   storefront3: storefront3Img,
 };
 
+export const isDirectImageSource = (imageKey?: string | null) => {
+  const source = (imageKey || "").trim();
+  return /^data:image\//i.test(source) || /^https?:\/\//i.test(source);
+};
+
+export const resolveMenuImage = (imageKey?: string | null) => {
+  const source = (imageKey || "").trim();
+  if (!source) return tawookImg;
+  if (isDirectImageSource(source)) return source;
+  return IMAGE_MAP[source] || tawookImg;
+};
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -657,7 +669,7 @@ export function ItemDetailModal({ item, onClose }: ItemDetailModalProps) {
 
         <div className="relative aspect-[16/10] w-full rounded-xl overflow-hidden border border-border">
           <img
-            src={item.imageKey.startsWith("data:") ? item.imageKey : (IMAGE_MAP[item.imageKey] || tawookImg)}
+            src={resolveMenuImage(item.imageKey)}
             alt={item.name}
             className="w-full h-full object-cover"
           />
@@ -844,7 +856,7 @@ export function CartDrawer() {
                 cart.map((item) => (
                   <div key={item.cartItemId} className="flex gap-4 p-4 rounded-xl bg-background border border-border/60">
                     <img
-                      src={item.imageKey.startsWith("data:") ? item.imageKey : (IMAGE_MAP[item.imageKey] || tawookImg)}
+                      src={resolveMenuImage(item.imageKey)}
                       alt={item.name}
                       className="w-16 h-16 object-cover rounded-lg shrink-0 border border-border"
                     />

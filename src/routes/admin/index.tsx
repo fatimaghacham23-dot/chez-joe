@@ -2,9 +2,9 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAdminContext } from "@/context/AdminContext";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, ShieldAlert, Loader2, Plus, Trash2, CheckCircle2, UploadCloud, X, Sparkles } from "lucide-react";
+import { ArrowLeft, Save, ShieldAlert, Loader2, Plus, Trash2, CheckCircle2, UploadCloud, X, Sparkles, Phone } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
-import { tawookImg, IMAGE_MAP } from "@/components/chezjoe/Sections";
+import { IMAGE_MAP, isDirectImageSource, resolveMenuImage } from "@/components/chezjoe/Sections";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboardIndex,
@@ -194,7 +194,13 @@ function AdminDashboardIndex() {
                 to="/admin/ai"
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-gold/40 text-gold hover:border-gold hover:bg-gold/5 text-xs uppercase tracking-[0.2em] font-semibold transition-all h-11"
               >
-                <Sparkles className="w-4 h-4" /> Go to AI Voice Assistant
+                <Sparkles className="w-4 h-4" /> AI Chat
+              </Link>
+              <Link
+                to="/admin/call"
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-emerald-500/40 text-emerald-400 hover:border-emerald-500 hover:bg-emerald-500/5 text-xs uppercase tracking-[0.2em] font-semibold transition-all h-11"
+              >
+                <Phone className="w-4 h-4" /> Call
               </Link>
               <button
                 onClick={handleSaveChanges}
@@ -298,12 +304,12 @@ function AdminDashboardIndex() {
                   {/* Left Column: Image Selector */}
                   <div className="flex flex-col gap-2 shrink-0 items-center">
                     <img
-                      src={item.imageKey.startsWith("data:") ? item.imageKey : (IMAGE_MAP[item.imageKey] || tawookImg)}
+                      src={resolveMenuImage(item.imageKey)}
                       alt="Thumbnail"
                       className="w-20 h-20 object-cover rounded-xl border border-border"
                     />
                     <select
-                      value={item.imageKey.startsWith("data:") ? "custom" : item.imageKey}
+                      value={isDirectImageSource(item.imageKey) || !IMAGE_MAP[item.imageKey] ? "custom" : item.imageKey}
                       onChange={(e) => {
                         if (e.target.value !== "custom") {
                           handleFieldChange(idx, "imageKey", e.target.value);
@@ -319,7 +325,7 @@ function AdminDashboardIndex() {
                       <option value="sandwish">Wrap</option>
                       <option value="storefront1">Store 1</option>
                       <option value="storefront3">Store 3</option>
-                      {item.imageKey.startsWith("data:") && (
+                      {(isDirectImageSource(item.imageKey) || !IMAGE_MAP[item.imageKey]) && (
                         <option value="custom">Custom</option>
                       )}
                     </select>
