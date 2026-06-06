@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAdminContext } from "../admin";
+import { useAdminContext } from "@/context/AdminContext";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Mic, Volume2, Phone, PhoneOff, Send, Bot, Sparkles, Loader2, Play, Pause } from "lucide-react";

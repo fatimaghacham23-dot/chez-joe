@@ -1,8 +1,9 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShieldAlert, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
+import { AdminContext, MenuItem } from "@/context/AdminContext";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -13,33 +14,6 @@ export const Route = createFileRoute("/admin")({
   }),
   component: AdminLayout,
 });
-
-interface MenuItem {
-  id: string;
-  name: string;
-  desc: string;
-  price: number;
-  tag: string;
-  imageKey: string;
-  isSoldOut: boolean;
-}
-
-interface AdminContextType {
-  menuData: MenuItem[] | undefined;
-  refetchMenu: () => void;
-  isLoadingMenu: boolean;
-  loadError: any;
-}
-
-const AdminContext = createContext<AdminContextType | undefined>(undefined);
-
-export function useAdminContext() {
-  const context = useContext(AdminContext);
-  if (!context) {
-    throw new Error("useAdminContext must be used within an AdminContext.Provider");
-  }
-  return context;
-}
 
 function AdminLayout() {
   const [passwordInput, setPasswordInput] = useState("");

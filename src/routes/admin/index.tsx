@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useAdminContext } from "../admin";
+import { useAdminContext } from "@/context/AdminContext";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, ShieldAlert, Loader2, Plus, Trash2, CheckCircle2, UploadCloud, X, Sparkles } from "lucide-react";
