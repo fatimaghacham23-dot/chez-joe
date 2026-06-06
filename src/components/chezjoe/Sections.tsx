@@ -733,7 +733,7 @@ export function ItemDetailModal({ item, onClose }: ItemDetailModalProps) {
   );
 }
 
-const formatWhatsAppMessage = (cart: any[]) => {
+const formatWhatsAppMessage = (cart: any[], locationCoords?: { lat: number; lng: number } | null) => {
   // We build the string with %0A to force line breaks in the URL
   let message = "*New Order - Chez Joe* 🍔%0A";
   message += "------------------------%0A";
@@ -749,18 +749,53 @@ const formatWhatsAppMessage = (cart: any[]) => {
 
   message += "------------------------%0A";
   const grandTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2);
-  message += `*Grand Total:* $${grandTotal}`;
+  message += `*Grand Total:* $${grandTotal}%0A`;
+
+  if (locationCoords) {
+    const mapLink = `https://www.google.com/maps/search/?api=1&query=${locationCoords.lat},${locationCoords.lng}`;
+    message += `%0A*Delivery Location:*%0A${mapLink}`;
+  }
   
   return encodeURIComponent(message).replace(/%250A/g, '%0A'); 
 };
 
 export function CartDrawer() {
   const { cart, cartDrawerOpen, setCartDrawerOpen, updateQuantity, removeFromCart, cartSubtotal, clearCart } = useCart();
+  const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser. Please enter your address manually.");
+      return;
+    }
+
+    setIsFetchingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocationCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setIsFetchingLocation(false);
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        alert("Unable to get location. Please enter your address manually.");
+        setIsFetchingLocation(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 0,
+      }
+    );
+  };
 
   const handleCheckout = () => {
     if (cart.length === 0) return;
 
-    window.open('https://wa.me/96171967461?text=' + formatWhatsAppMessage(cart), '_blank');
+    window.open('https://wa.me/96171967461?text=' + formatWhatsAppMessage(cart, locationCoords), '_blank');
     
     clearCart();
     setCartDrawerOpen(false);
@@ -873,6 +908,32 @@ export function CartDrawer() {
                     <span className="font-mono text-gold">${cartSubtotal.toFixed(2)}</span>
                   </div>
                 </div>
+
+                <button
+                  onClick={handleGetLocation}
+                  disabled={isFetchingLocation}
+                  className={`w-full py-2.5 border rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    locationCoords
+                      ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400 font-semibold shadow-md shadow-emerald-500/5"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-gold/45"
+                  }`}
+                >
+                  {isFetchingLocation ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gold" />
+                      Fetching Location...
+                    </>
+                  ) : locationCoords ? (
+                    <>
+                      <span className="text-emerald-400 font-bold">✓</span> Location Added!
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-3.5 h-3.5 text-gold" />
+                      Add My Location
+                    </>
+                  )}
+                </button>
 
                 <button
                   onClick={handleCheckout}
