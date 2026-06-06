@@ -2,8 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAdminContext } from "@/context/AdminContext";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Mic, Volume2, Phone, PhoneOff, Send, Bot, Sparkles, Loader2, Play, Pause } from "lucide-react";
+import { ArrowLeft, Mic, Volume2, Phone, PhoneOff, Send, Bot, Sparkles, Loader2, Play, Pause, UploadCloud, Image as ImageIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
+import { IMAGE_MAP, tawookImg } from "@/components/chezjoe/Sections";
 
 export const Route = createFileRoute("/admin/ai")({
   component: AIAssistantPage,
@@ -13,6 +14,14 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   audio?: string | null;
+  addedItem?: {
+    id: string;
+    name: string;
+    price: number;
+    desc: string;
+    tag: string;
+    imageKey: string;
+  } | null;
 }
 
 function AIAssistantPage() {
@@ -151,7 +160,7 @@ function AIAssistantPage() {
         throw new Error("Assistant failed to process query.");
       }
 
-      const { text, audio, reloadMenu } = await assistantRes.json();
+      const { text, audio, reloadMenu, addedItem } = await assistantRes.json();
       
       // Invalidate menu queries so dashboard stays in sync
       queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
@@ -160,7 +169,7 @@ function AIAssistantPage() {
       }
 
       // Add assistant response to chat
-      setMessages((prev) => [...prev, { role: "assistant", content: text, audio }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: text, audio, addedItem }]);
 
       // 3. Play voice reply
       if (audio) {
@@ -233,13 +242,13 @@ function AIAssistantPage() {
         throw new Error("Assistant request failed.");
       }
 
-      const { text, audio, reloadMenu } = await res.json();
+      const { text, audio, reloadMenu, addedItem } = await res.json();
       
       queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
       if (reloadMenu) {
         refetchMenu();
       }
-      setMessages((prev) => [...prev, { role: "assistant", content: text, audio }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: text, audio, addedItem }]);
 
       if (audio) {
         // Automatically play the voice response even if call mode is off, as requested
@@ -352,6 +361,15 @@ function AIAssistantPage() {
                   </div>
                 )}
               </div>
+
+              {/* Render the Live Preview Card right under the assistant bubble */}
+              {msg.role === "assistant" && msg.addedItem && (
+                <LivePreviewCard 
+                  addedItem={msg.addedItem} 
+                  authPassword={authPassword}
+                  onImageUploaded={() => refetchMenu()}
+                />
+              )}
             </div>
           </div>
         ))}
@@ -503,6 +521,163 @@ function CustomAudioPlayer({ src }: { src: string }) {
         <div className="flex items-center justify-between text-[9px] font-mono text-muted-foreground select-none">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Dynamic Live Preview Component
+function LivePreviewCard({ 
+  addedItem, 
+  authPassword, 
+  onImageUploaded 
+}: { 
+  addedItem: NonNullable<ChatMessage["addedItem"]>;
+  authPassword: string;
+  onImageUploaded: () => void;
+}) {
+  const { menuData } = useAdminContext();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [pulse, setPulse] = useState(false);
+
+  // Find the item dynamically in the shared menuData
+  const liveItem = menuData?.find((m) => m.id === addedItem.id);
+  const currentItem = liveItem || addedItem;
+
+  // Pulse animation when item state changes
+  useEffect(() => {
+    setPulse(true);
+    const timer = setTimeout(() => setPulse(false), 1200);
+    return () => clearTimeout(timer);
+  }, [liveItem?.price, liveItem?.imageKey, liveItem?.name, liveItem?.desc]);
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Image is too large. Please upload an image under 2MB.");
+      return;
+    }
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Data = reader.result as string;
+      try {
+        await onImageUploadedWithBase64(addedItem.id, base64Data);
+      } catch (err: any) {
+        alert(err.message || "Failed to update image.");
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Helper function to send hidden image update request to assistant
+  const onImageUploadedWithBase64 = async (itemId: string, base64Data: string) => {
+    onImageUploaded(); // this triggers a reload
+    
+    // We send a direct call to the server to update the image in the background
+    const res = await fetch("/api/ai-assistant", {
+      method: "POST",
+      headers: {
+        "Authorization": authPassword,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "user",
+            content: `[System Action: The user selected a file. Directly execute the updateItemImage tool with itemId: "${itemId}" and imageKey: "${base64Data}". Do not ask for further confirmation, just call the tool now.]`
+          }
+        ]
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to update item image via AI assistant.");
+    }
+    
+    const result = await res.json();
+    if (result.reloadMenu) {
+      onImageUploaded(); // final reload
+    }
+  };
+
+  const imageSrc = currentItem.imageKey.startsWith("data:") 
+    ? currentItem.imageKey 
+    : (IMAGE_MAP[currentItem.imageKey] || tawookImg);
+
+  return (
+    <div className={`mt-3 border rounded-2xl overflow-hidden bg-background max-w-sm shadow-md transition-all duration-300 ${
+      pulse ? "ring-2 ring-gold scale-[1.01] shadow-gold/10 animate-pulse" : "border-border"
+    }`}>
+      {/* Visual Header Image */}
+      <div className="relative h-40 bg-surface/50 overflow-hidden flex items-center justify-center border-b border-border/60">
+        <img
+          src={imageSrc}
+          alt={currentItem.name}
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/10 text-[9px] font-mono text-gold uppercase tracking-wider">
+          Live Preview
+        </div>
+      </div>
+
+      {/* Details Box */}
+      <div className="p-4 space-y-3">
+        <div className="flex justify-between items-start gap-2">
+          <h4 className="font-semibold text-sm text-foreground leading-tight truncate">
+            {currentItem.name}
+          </h4>
+          <span className="font-mono text-gold text-xs font-semibold shrink-0">
+            ${currentItem.price.toFixed(2)}
+          </span>
+        </div>
+        
+        {currentItem.desc && (
+          <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+            {currentItem.desc}
+          </p>
+        )}
+
+        <div className="pt-2 flex items-center justify-between gap-3 border-t border-border/40">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+            {currentItem.tag || "Signature"}
+          </span>
+
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={isUploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gold/30 hover:border-gold text-gold bg-gold/5 hover:bg-gold/10 text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer disabled:opacity-50 h-8"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" /> Updating...
+              </>
+            ) : (
+              <>
+                <ImageIcon className="w-3.5 h-3.5" /> Upload Image
+              </>
+            )}
+          </button>
+          
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            className="hidden"
+          />
         </div>
       </div>
     </div>

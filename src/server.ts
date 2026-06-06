@@ -260,6 +260,7 @@ export default {
         const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
         let reloadMenu = false;
+        let addedItem = null;
 
         const result = await generateText({
           model: google(modelName),
@@ -276,18 +277,30 @@ For example:
 Safety Rules:
 - Before executing addItem or removeItem, you MUST verbally repeat the action and ask for confirmation from the user (e.g., "I will remove Garlic Fries. Please say Yes to confirm.").
 - Only set isConfirmed to true in the tool call if the user has explicitly confirmed the action in the conversation history (e.g. by saying "Yes", "Confirm", "Yalla", "Ok").
-- If the user has not confirmed yet, do not call the tool, or call it with isConfirmed: false so that the tool execution tells you what confirmation message to say.`,
+- If the user has not confirmed yet, do not call the tool, or call it with isConfirmed: false so that the tool execution tells you what confirmation message to say.
+
+Image Workflow Rules:
+- Immediately after you successfully execute the addItem tool, you MUST ask the user: "I have added the item. Would you like to upload an image for [Item Name]?"`,
           maxSteps: 5,
           onStepFinish({ toolResults }) {
             if (toolResults && toolResults.length > 0) {
-              const hasModifyingToolSucceeded = toolResults.some((r: any) =>
-                (r.toolName === "addItem" || r.toolName === "updatePrice" || r.toolName === "removeItem") &&
-                r.result &&
-                r.result.success
-              );
-              if (hasModifyingToolSucceeded) {
-                reloadMenu = true;
-              }
+              toolResults.forEach((r: any) => {
+                if (r.result && r.result.success) {
+                  if (r.toolName === "addItem" || r.toolName === "updatePrice" || r.toolName === "removeItem" || r.toolName === "updateItemImage") {
+                    reloadMenu = true;
+                  }
+                  if (r.toolName === "addItem") {
+                    addedItem = {
+                      id: r.result.itemId || r.args.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+                      name: r.args.name,
+                      price: r.args.price,
+                      desc: r.args.description,
+                      tag: r.args.category,
+                      imageKey: 'plated'
+                    };
+                  }
+                }
+              });
             }
           }
         });
@@ -301,6 +314,7 @@ Safety Rules:
             text: replyText,
             audio: null,
             reloadMenu,
+            addedItem,
             warning: "DEEPGRAM_API_KEY is not set. Using browser text-to-speech fallback."
           }), {
             status: 200,
@@ -326,6 +340,7 @@ Safety Rules:
             text: replyText,
             audio: null,
             reloadMenu,
+            addedItem,
             warning: "Deepgram TTS API failed. Using browser text-to-speech fallback."
           }), {
             status: 200,
@@ -343,7 +358,8 @@ Safety Rules:
         return new Response(JSON.stringify({
           text: replyText,
           audio: audioDataUrl,
-          reloadMenu
+          reloadMenu,
+          addedItem
         }), {
           status: 200,
           headers: {

@@ -46,26 +46,54 @@ export const assistantTools = {
         return { success: false, requiresConfirmation: true, message: `Please confirm that you want to add ${name} for $${price.toFixed(2)}.` };
       }
 
-      const menu = await getMenuData() || [];
-      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      
-      if (menu.some((m: any) => m.id === id)) {
-        return { success: false, error: `An item with id "${id}" already exists.` };
+      try {
+        const menu = await getMenuData() || [];
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        
+        if (menu.some((m: any) => m.id === id)) {
+          return { success: false, error: `An item with id "${id}" already exists.` };
+        }
+
+        const newItem = {
+          id,
+          name,
+          desc: description,
+          price,
+          tag: category,
+          imageKey: 'plated', // Default fallback image key
+          isSoldOut: false
+        };
+
+        menu.push(newItem);
+        await setMenuData(menu);
+        return { success: true, itemId: id, message: `Successfully added "${name}" to the menu.` };
+      } catch (err: any) {
+        return { success: false, error: `Database write failed: ${err.message}` };
       }
+    }
+  }),
 
-      const newItem = {
-        id,
-        name,
-        desc: description,
-        price,
-        tag: category,
-        imageKey: 'tawook', // Default fallback image key
-        isSoldOut: false
-      };
-
-      menu.push(newItem);
-      await setMenuData(menu);
-      return { success: true, message: `Successfully added "${name}" to the menu.` };
+  updateItemImage: tool({
+    description: 'Update the image URL or base64 key of an existing menu item.',
+    parameters: z.object({
+      itemId: z.string().describe('The ID of the menu item (e.g. garlic_fries)'),
+      imageKey: z.string().describe('The new image URL, base64 data string, or preset key')
+    }),
+    execute: async ({ itemId, imageKey }) => {
+      try {
+        const menu = await getMenuData() || [];
+        const item = menu.find((m: any) => m.id === itemId || m.name.toLowerCase() === itemId.toLowerCase() || m.id.toLowerCase() === itemId.toLowerCase().replace(/[^a-z0-9]+/g, '_'));
+        
+        if (!item) {
+          return { success: false, error: `Menu item with ID or name "${itemId}" was not found.` };
+        }
+        
+        item.imageKey = imageKey;
+        await setMenuData(menu);
+        return { success: true, message: `Successfully updated the image for "${item.name}".` };
+      } catch (err: any) {
+        return { success: false, error: `Database write failed: ${err.message}` };
+      }
     }
   }),
 
