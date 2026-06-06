@@ -93,20 +93,30 @@ function MenuPage() {
                 </div>
 
                 {/* Sticky Category Filter Bar */}
-                <div className="sticky top-16 z-30 py-3 bg-background/85 backdrop-blur-xl border-y border-border/80 mb-12 flex items-center justify-between gap-2 md:gap-3 w-full px-2 sm:px-4 sm:rounded-2xl sm:border shadow-lg shadow-black/10">
-                  {CATEGORIES.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setActiveCategory(cat)}
-                      className={`magnetic flex-1 text-center py-2.5 rounded-full text-[10px] xs:text-xs uppercase tracking-normal xs:tracking-wider transition-all duration-300 cursor-pointer ${
-                        activeCategory === cat
-                          ? "bg-gold text-[#0A0A0C] font-bold shadow-md shadow-gold/20"
-                          : "border border-border text-muted-foreground hover:text-foreground hover:border-gold/45"
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+                <div className="sticky top-16 z-30 py-3 bg-background/85 backdrop-blur-xl border-y border-border/80 mb-12 flex items-center justify-between gap-2 md:gap-3 w-[calc(100%+3rem)] -mx-6 px-6 sm:mx-0 sm:w-full sm:px-4 sm:rounded-2xl sm:border shadow-lg shadow-black/10">
+                  {CATEGORIES.map((cat) => {
+                    const isActive = activeCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setActiveCategory(cat)}
+                        className={`magnetic relative flex-1 text-center py-2.5 px-1 rounded-full text-[10px] xs:text-xs uppercase tracking-normal xs:tracking-wider transition-all duration-300 cursor-pointer border ${
+                          isActive
+                            ? "text-[#0A0A0C] border-gold font-bold"
+                            : "border-border text-muted-foreground hover:text-foreground hover:border-gold/45"
+                        }`}
+                      >
+                        {isActive && (
+                          <motion.span
+                            layoutId="activeCategoryTab"
+                            className="absolute inset-0 bg-gold rounded-full -z-10 shadow-md shadow-gold/20"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          />
+                        )}
+                        <span className="relative z-10">{cat}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Loading / Error States */}
