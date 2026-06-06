@@ -1,8 +1,21 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAdminContext } from "@/context/AdminContext";
+import { useAdminContext, type MenuItem } from "@/context/AdminContext";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Mic, Volume2, Phone, PhoneOff, Send, Bot, Sparkles, Loader2, Play, Pause, UploadCloud, Image as ImageIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  Mic,
+  Volume2,
+  Phone,
+  PhoneOff,
+  Send,
+  Bot,
+  Sparkles,
+  Loader2,
+  Play,
+  Pause,
+  UploadCloud,
+} from "lucide-react";
 import { ThemeToggle } from "@/components/chezjoe/ThemeToggle";
 import { IMAGE_MAP, tawookImg } from "@/components/chezjoe/Sections";
 
@@ -14,14 +27,85 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   audio?: string | null;
-  addedItem?: {
-    id: string;
-    name: string;
-    price: number;
-    desc: string;
-    tag: string;
-    imageKey: string;
-  } | null;
+  addedItem?: MenuPreviewItem | null;
+  menuEvent?: MenuEvent | null;
+}
+
+type MenuEventType = "addItem" | "updateItemPrice" | "removeItem" | "updateItemImage";
+
+interface MenuPreviewItem {
+  id: string;
+  name: string;
+  price: number;
+  desc: string;
+  tag: string;
+  imageKey: string;
+  isSoldOut?: boolean;
+}
+
+interface MenuEvent {
+  type: MenuEventType;
+  itemId?: string;
+  itemName?: string;
+  item?: MenuPreviewItem;
+  removedItem?: MenuPreviewItem;
+  newPrice?: number;
+  imageKey?: string;
+  message?: string;
+}
+
+function toMenuItem(item: MenuPreviewItem): MenuItem {
+  return {
+    id: item.id,
+    name: item.name,
+    desc: item.desc || "",
+    price: Number(item.price) || 0,
+    tag: item.tag || "Signature",
+    imageKey: item.imageKey || "plated",
+    isSoldOut: Boolean(item.isSoldOut),
+  };
+}
+
+function eventPreviewItem(event: MenuEvent) {
+  return event.item || event.removedItem || null;
+}
+
+function applyMenuEvent(menu: MenuItem[] | undefined, event: MenuEvent | null | undefined) {
+  if (!event) return menu;
+
+  const currentMenu = menu ? [...menu] : [];
+  const eventItem = eventPreviewItem(event);
+  const targetId = event.itemId || eventItem?.id;
+  if (!targetId) return currentMenu;
+
+  if (event.type === "removeItem") {
+    return currentMenu.filter((item) => item.id !== targetId);
+  }
+
+  if (!eventItem) return currentMenu;
+
+  const nextItem = toMenuItem(eventItem);
+  const existingIndex = currentMenu.findIndex((item) => item.id === targetId);
+  if (existingIndex >= 0) {
+    currentMenu[existingIndex] = { ...currentMenu[existingIndex], ...nextItem };
+    return currentMenu;
+  }
+
+  return [...currentMenu, nextItem];
+}
+
+function legacyAddEvent(addedItem: MenuPreviewItem | null | undefined): MenuEvent | null {
+  if (!addedItem) return null;
+  return {
+    type: "addItem",
+    itemId: addedItem.id,
+    itemName: addedItem.name,
+    item: addedItem,
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function AIAssistantPage() {
@@ -34,12 +118,28 @@ function AIAssistantPage() {
 
   // Voice States
   const [isCallActive, setIsCallActive] = useState(false);
-  const [aiStatus, setAiStatus] = useState<"Idle" | "Listening..." | "Thinking..." | "Speaking...">("Idle");
+  const [aiStatus, setAiStatus] = useState<"Idle" | "Listening..." | "Thinking..." | "Speaking...">(
+    "Idle",
+  );
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const syncMenuEvent = (menuEvent?: MenuEvent | null) => {
+    if (menuEvent) {
+      queryClient.setQueryData<MenuItem[]>(["admin_menu"], (current) =>
+        applyMenuEvent(current, menuEvent),
+      );
+      queryClient.setQueryData<MenuItem[]>(["menu"], (current) =>
+        applyMenuEvent(current, menuEvent),
+      );
+    }
+    queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
+    queryClient.invalidateQueries({ queryKey: ["menu"] });
+    refetchMenu();
+  };
 
   // Sync scroll to bottom when new messages arrive
   useEffect(() => {
@@ -124,7 +224,7 @@ function AIAssistantPage() {
       const transcribeRes = await fetch("/api/ai-transcribe", {
         method: "POST",
         headers: {
-          "Authorization": authPassword,
+          Authorization: authPassword,
           "Content-Type": "audio/webm",
         },
         body: audioBlob,
@@ -150,7 +250,7 @@ function AIAssistantPage() {
       const assistantRes = await fetch("/api/ai-assistant", {
         method: "POST",
         headers: {
-          "Authorization": authPassword,
+          Authorization: authPassword,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ messages: updatedMessages }),
@@ -160,29 +260,31 @@ function AIAssistantPage() {
         throw new Error("Assistant failed to process query.");
       }
 
-      const { text, audio, reloadMenu, addedItem } = await assistantRes.json();
-      
-      // Invalidate menu queries so dashboard stays in sync
-      queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
-      if (reloadMenu) {
-        refetchMenu();
+      const { text, audio, reloadMenu, addedItem, menuEvent } = await assistantRes.json();
+      const assistantMenuEvent = menuEvent || legacyAddEvent(addedItem);
+
+      if (reloadMenu || assistantMenuEvent) {
+        syncMenuEvent(assistantMenuEvent);
       }
 
       // Add assistant response to chat
-      setMessages((prev) => [...prev, { role: "assistant", content: text, audio, addedItem }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: text, audio, addedItem, menuEvent: assistantMenuEvent },
+      ]);
 
       // 3. Play voice reply
       if (audio) {
         setAiStatus("Speaking...");
         const playAudio = new Audio(audio);
         activeAudioRef.current = playAudio;
-        
+
         playAudio.onended = () => {
           setAiStatus("Idle");
           // Re-record next turn if call toggle remains active
           if (isCallActive) startVoiceSession();
         };
-        
+
         playAudio.onerror = () => {
           setAiStatus("Idle");
           if (isCallActive) startVoiceSession();
@@ -208,9 +310,9 @@ function AIAssistantPage() {
           if (isCallActive) startVoiceSession();
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(err.message || "Failed to process voice query.");
+      alert(getErrorMessage(err, "Failed to process voice query."));
       setAiStatus("Idle");
       setIsCallActive(false);
     }
@@ -232,7 +334,7 @@ function AIAssistantPage() {
       const res = await fetch("/api/ai-assistant", {
         method: "POST",
         headers: {
-          "Authorization": authPassword,
+          Authorization: authPassword,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ messages: updatedMessages }),
@@ -242,13 +344,16 @@ function AIAssistantPage() {
         throw new Error("Assistant request failed.");
       }
 
-      const { text, audio, reloadMenu, addedItem } = await res.json();
-      
-      queryClient.invalidateQueries({ queryKey: ["admin_menu"] });
-      if (reloadMenu) {
-        refetchMenu();
+      const { text, audio, reloadMenu, addedItem, menuEvent } = await res.json();
+      const assistantMenuEvent = menuEvent || legacyAddEvent(addedItem);
+
+      if (reloadMenu || assistantMenuEvent) {
+        syncMenuEvent(assistantMenuEvent);
       }
-      setMessages((prev) => [...prev, { role: "assistant", content: text, audio, addedItem }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: text, audio, addedItem, menuEvent: assistantMenuEvent },
+      ]);
 
       if (audio) {
         // Automatically play the voice response even if call mode is off, as requested
@@ -261,9 +366,9 @@ function AIAssistantPage() {
       } else {
         setAiStatus("Idle");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(err.message || "Connection error");
+      alert(getErrorMessage(err, "Connection error"));
       setAiStatus("Idle");
     } finally {
       setIsSending(false);
@@ -273,7 +378,7 @@ function AIAssistantPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col admin-page relative">
       <div className="absolute top-0 left-0 w-64 h-64 rounded-full bg-gold/5 blur-3xl pointer-events-none" />
-      
+
       {/* Navbar Topbar */}
       <header className="sticky top-0 z-30 py-4 px-6 bg-surface border-b border-border flex items-center justify-between shadow-md">
         <div className="flex items-center gap-4">
@@ -291,7 +396,7 @@ function AIAssistantPage() {
 
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          
+
           {/* Topbar Call Toggle Button */}
           <button
             onClick={() => setIsCallActive(!isCallActive)}
@@ -323,9 +428,12 @@ function AIAssistantPage() {
               <Bot className="w-8 h-8" />
             </div>
             <div>
-              <h2 className="font-display text-2xl font-medium text-foreground">Talk to Chez Joe</h2>
+              <h2 className="font-display text-2xl font-medium text-foreground">
+                Talk to Chez Joe
+              </h2>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto mt-2 leading-relaxed">
-                Type your command below, or click the **Start Call** button in the topbar to interact using your voice.
+                Type your command below, or click the **Start Call** button in the topbar to
+                interact using your voice.
               </p>
             </div>
           </div>
@@ -343,7 +451,7 @@ function AIAssistantPage() {
                 <Sparkles className="w-4 h-4 text-gold" />
               </div>
             )}
-            
+
             <div className="flex flex-col gap-1.5 max-w-[80%]">
               <div
                 className={`rounded-2xl px-4 py-3 leading-relaxed shadow-sm ${
@@ -353,7 +461,7 @@ function AIAssistantPage() {
                 }`}
               >
                 <p className="text-sm">{msg.content}</p>
-                
+
                 {/* Sleek Custom Audio Player Component */}
                 {msg.role === "assistant" && msg.audio && (
                   <div className="mt-3.5 pt-3 border-t border-border/40">
@@ -363,11 +471,11 @@ function AIAssistantPage() {
               </div>
 
               {/* Render the Live Preview Card right under the assistant bubble */}
-              {msg.role === "assistant" && msg.addedItem && (
-                <LivePreviewCard 
-                  addedItem={msg.addedItem} 
+              {msg.role === "assistant" && (msg.menuEvent || msg.addedItem) && (
+                <LivePreviewCard
+                  menuEvent={(msg.menuEvent || legacyAddEvent(msg.addedItem)) as MenuEvent}
                   authPassword={authPassword}
-                  onImageUploaded={() => refetchMenu()}
+                  onMenuEvent={syncMenuEvent}
                 />
               )}
             </div>
@@ -377,9 +485,15 @@ function AIAssistantPage() {
         {/* Real-time Status Bubble */}
         {aiStatus !== "Idle" && (
           <div className="flex items-center gap-2.5 text-xs text-muted-foreground pl-11">
-            {aiStatus === "Listening..." && <Mic className="w-3.5 h-3.5 text-red-500 animate-pulse" />}
-            {aiStatus === "Thinking..." && <Loader2 className="w-3.5 h-3.5 text-gold animate-spin" />}
-            {aiStatus === "Speaking..." && <Volume2 className="w-3.5 h-3.5 text-emerald-400 animate-bounce" />}
+            {aiStatus === "Listening..." && (
+              <Mic className="w-3.5 h-3.5 text-red-500 animate-pulse" />
+            )}
+            {aiStatus === "Thinking..." && (
+              <Loader2 className="w-3.5 h-3.5 text-gold animate-spin" />
+            )}
+            {aiStatus === "Speaking..." && (
+              <Volume2 className="w-3.5 h-3.5 text-emerald-400 animate-bounce" />
+            )}
             <span className="font-semibold uppercase tracking-wider text-[10px]">
               {aiStatus === "Listening..." ? "Listening... Speak now" : aiStatus}
             </span>
@@ -391,17 +505,16 @@ function AIAssistantPage() {
 
       {/* Input Form Bar (Min 44px touch-friendly size) */}
       <footer className="p-4 bg-surface border-t border-border sticky bottom-0">
-        <form onSubmit={handleSendText} className="max-w-3xl w-full mx-auto flex items-center gap-2">
+        <form
+          onSubmit={handleSendText}
+          className="max-w-3xl w-full mx-auto flex items-center gap-2"
+        >
           <input
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
             disabled={isSending || isRecording}
-            placeholder={
-              isRecording
-                ? "Recording voice..."
-                : "Ask Chez Joe AI Assistant..."
-            }
+            placeholder={isRecording ? "Recording voice..." : "Ask Chez Joe AI Assistant..."}
             className="flex-1 bg-background border border-border focus:border-gold outline-none rounded-xl text-sm px-4 h-12 text-foreground disabled:opacity-50 placeholder:text-muted-foreground"
           />
           <button
@@ -516,7 +629,7 @@ function CustomAudioPlayer({ src }: { src: string }) {
             style={{ width: `${progress}%` }}
           />
         </div>
-        
+
         {/* Elapsed Time & Length */}
         <div className="flex items-center justify-between text-[9px] font-mono text-muted-foreground select-none">
           <span>{formatTime(currentTime)}</span>
@@ -528,38 +641,60 @@ function CustomAudioPlayer({ src }: { src: string }) {
 }
 
 // Dynamic Live Preview Component
-function LivePreviewCard({ 
-  addedItem, 
-  authPassword, 
-  onImageUploaded 
-}: { 
-  addedItem: NonNullable<ChatMessage["addedItem"]>;
+function LivePreviewCard({
+  menuEvent,
+  authPassword,
+  onMenuEvent,
+}: {
+  menuEvent: MenuEvent;
   authPassword: string;
-  onImageUploaded: () => void;
+  onMenuEvent: (event?: MenuEvent | null) => void;
 }) {
   const { menuData } = useAdminContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [pulse, setPulse] = useState(false);
 
-  // Find the item dynamically in the shared menuData
-  const liveItem = menuData?.find((m) => m.id === addedItem.id);
-  const currentItem = liveItem || addedItem;
+  const isRemoved = menuEvent.type === "removeItem";
+  const eventItem = eventPreviewItem(menuEvent);
+  const liveItem =
+    !isRemoved && menuEvent.itemId ? menuData?.find((m) => m.id === menuEvent.itemId) : undefined;
+  const currentItem: MenuPreviewItem = liveItem ||
+    eventItem || {
+      id: menuEvent.itemId || "unknown",
+      name: menuEvent.itemName || "Menu item",
+      desc: "",
+      price: menuEvent.newPrice || 0,
+      tag: "Signature",
+      imageKey: "plated",
+      isSoldOut: false,
+    };
 
-  // Pulse animation when item state changes
+  const badgeLabel =
+    menuEvent.type === "addItem"
+      ? "Added"
+      : menuEvent.type === "updateItemPrice"
+        ? "Price Updated"
+        : menuEvent.type === "updateItemImage"
+          ? "Photo Updated"
+          : "Removed";
+
   useEffect(() => {
     setPulse(true);
     const timer = setTimeout(() => setPulse(false), 1200);
     return () => clearTimeout(timer);
-  }, [liveItem?.price, liveItem?.imageKey, liveItem?.name, liveItem?.desc]);
+  }, [menuEvent.type, liveItem?.price, liveItem?.imageKey, liveItem?.name, liveItem?.desc]);
 
   const handleUploadClick = () => {
-    fileInputRef.current?.click();
+    if (!isRemoved) {
+      fileInputRef.current?.click();
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    e.target.value = "";
+    if (!file || isRemoved) return;
 
     if (file.size > 2 * 1024 * 1024) {
       alert("Image is too large. Please upload an image under 2MB.");
@@ -571,9 +706,9 @@ function LivePreviewCard({
     reader.onloadend = async () => {
       const base64Data = reader.result as string;
       try {
-        await onImageUploadedWithBase64(addedItem.id, base64Data);
-      } catch (err: any) {
-        alert(err.message || "Failed to update image.");
+        await onImageUploadedWithBase64(currentItem.id, base64Data);
+      } catch (err: unknown) {
+        alert(getErrorMessage(err, "Failed to update image."));
       } finally {
         setIsUploading(false);
       }
@@ -581,68 +716,84 @@ function LivePreviewCard({
     reader.readAsDataURL(file);
   };
 
-  // Helper function to send hidden image update request to assistant
   const onImageUploadedWithBase64 = async (itemId: string, base64Data: string) => {
-    onImageUploaded(); // this triggers a reload
-    
-    // We send a direct call to the server to update the image in the background
+    const optimisticEvent: MenuEvent = {
+      type: "updateItemImage",
+      itemId,
+      itemName: currentItem.name,
+      imageKey: base64Data,
+      item: { ...currentItem, imageKey: base64Data },
+    };
+    onMenuEvent(optimisticEvent);
+
     const res = await fetch("/api/ai-assistant", {
       method: "POST",
       headers: {
-        "Authorization": authPassword,
+        Authorization: authPassword,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         messages: [
           {
             role: "user",
-            content: `[System Action: The user selected a file. Directly execute the updateItemImage tool with itemId: "${itemId}" and imageKey: "${base64Data}". Do not ask for further confirmation, just call the tool now.]`
-          }
-        ]
+            content: `[System Action: The user selected an upload file. Directly execute updateItemImage with itemId: "${itemId}" and imageKey: "${base64Data}". Do not ask for confirmation.]`,
+          },
+        ],
       }),
     });
 
     if (!res.ok) {
       throw new Error("Failed to update item image via AI assistant.");
     }
-    
+
     const result = await res.json();
-    if (result.reloadMenu) {
-      onImageUploaded(); // final reload
-    }
+    onMenuEvent(result.menuEvent || optimisticEvent);
   };
 
-  const imageSrc = currentItem.imageKey.startsWith("data:") 
-    ? currentItem.imageKey 
-    : (IMAGE_MAP[currentItem.imageKey] || tawookImg);
+  const imageSrc = currentItem.imageKey.startsWith("data:")
+    ? currentItem.imageKey
+    : IMAGE_MAP[currentItem.imageKey] || tawookImg;
 
   return (
-    <div className={`mt-3 border rounded-2xl overflow-hidden bg-background max-w-sm shadow-md transition-all duration-300 ${
-      pulse ? "ring-2 ring-gold scale-[1.01] shadow-gold/10 animate-pulse" : "border-border"
-    }`}>
-      {/* Visual Header Image */}
+    <div
+      className={`mt-3 border rounded-2xl overflow-hidden bg-background max-w-sm shadow-md transition-all duration-300 ${
+        pulse
+          ? "ring-2 ring-gold scale-[1.01] shadow-gold/10 animate-pulse"
+          : isRemoved
+            ? "border-red-500/40"
+            : "border-border"
+      }`}
+    >
       <div className="relative h-40 bg-surface/50 overflow-hidden flex items-center justify-center border-b border-border/60">
         <img
           src={imageSrc}
           alt={currentItem.name}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover ${isRemoved ? "grayscale opacity-45" : ""}`}
         />
-        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/10 text-[9px] font-mono text-gold uppercase tracking-wider">
-          Live Preview
+        {isRemoved && <div className="absolute inset-0 bg-black/40" />}
+        <div
+          className={`absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/10 text-[9px] font-mono uppercase tracking-wider ${
+            isRemoved ? "text-red-300" : "text-gold"
+          }`}
+        >
+          {badgeLabel}
         </div>
       </div>
 
-      {/* Details Box */}
       <div className="p-4 space-y-3">
         <div className="flex justify-between items-start gap-2">
-          <h4 className="font-semibold text-sm text-foreground leading-tight truncate">
+          <h4
+            className={`font-semibold text-sm leading-tight truncate ${isRemoved ? "text-muted-foreground line-through" : "text-foreground"}`}
+          >
             {currentItem.name}
           </h4>
-          <span className="font-mono text-gold text-xs font-semibold shrink-0">
-            ${currentItem.price.toFixed(2)}
+          <span
+            className={`font-mono text-xs font-semibold shrink-0 ${isRemoved ? "text-muted-foreground" : "text-gold"}`}
+          >
+            ${Number(currentItem.price || 0).toFixed(2)}
           </span>
         </div>
-        
+
         {currentItem.desc && (
           <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
             {currentItem.desc}
@@ -650,27 +801,29 @@ function LivePreviewCard({
         )}
 
         <div className="pt-2 flex items-center justify-between gap-3 border-t border-border/40">
-          <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
-            {currentItem.tag || "Signature"}
+          <span
+            className={`text-[9px] uppercase tracking-wider font-semibold ${isRemoved ? "text-red-300" : "text-muted-foreground"}`}
+          >
+            {isRemoved ? "Removed from menu" : currentItem.tag || "Signature"}
           </span>
 
           <button
             type="button"
             onClick={handleUploadClick}
-            disabled={isUploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gold/30 hover:border-gold text-gold bg-gold/5 hover:bg-gold/10 text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer disabled:opacity-50 h-8"
+            disabled={isUploading || isRemoved}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gold/30 hover:border-gold text-gold bg-gold/5 hover:bg-gold/10 text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed h-8"
           >
             {isUploading ? (
               <>
-                <Loader2 className="w-3 h-3 animate-spin" /> Updating...
+                <Loader2 className="w-3 h-3 animate-spin" /> Updating
               </>
             ) : (
               <>
-                <ImageIcon className="w-3.5 h-3.5" /> Upload Image
+                <UploadCloud className="w-3.5 h-3.5" /> Upload
               </>
             )}
           </button>
-          
+
           <input
             type="file"
             ref={fileInputRef}
