@@ -35,20 +35,21 @@ export const assistantTools = {
   addItem: tool({
     description: 'Add a new menu item to the restaurant. Safety reminder: verbally ask the user to confirm with Yes before calling this tool with isConfirmed = true.',
     parameters: z.object({
-      name: z.string().describe('The name of the new item'),
-      price: z.number().describe('The price in USD'),
-      description: z.string().optional().describe('Short description of the dish'),
-      category: z.string().optional().describe('Category tag (e.g. Signature, House Favorite, Side, Beverage)'),
-      isConfirmed: z.boolean().describe('Set to true only if the user explicitly said Yes to confirm this addition in the last turn.')
+      itemName: z.string().describe('The name of the menu item'),
+      price: z.string().describe('The price of the item'),
+      isConfirmed: z.boolean().describe('Whether the user has confirmed the addition'),
+      description: z.string().optional().describe('Optional description of the item'),
+      category: z.string().optional().describe('Optional category'),
     }),
-    execute: async ({ name, price, description, category, isConfirmed }) => {
+    execute: async ({ itemName, price, isConfirmed, description, category }) => {
+      const numericPrice = parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0;
       if (!isConfirmed) {
-        return { success: false, requiresConfirmation: true, message: `Please confirm that you want to add ${name} for $${price.toFixed(2)}.` };
+        return { success: false, requiresConfirmation: true, message: `Please confirm that you want to add ${itemName} for $${numericPrice.toFixed(2)}.` };
       }
 
       try {
         const menu = await getMenuData() || [];
-        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        const id = itemName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
         
         if (menu.some((m: any) => m.id === id)) {
           return { success: false, error: `An item with id "${id}" already exists.` };
@@ -56,9 +57,9 @@ export const assistantTools = {
 
         const newItem = {
           id,
-          name,
+          name: itemName,
           desc: description || "",
-          price,
+          price: numericPrice,
           tag: category || "Signature",
           imageKey: 'plated', // Default fallback image key
           isSoldOut: false
@@ -66,7 +67,7 @@ export const assistantTools = {
 
         menu.push(newItem);
         await setMenuData(menu);
-        return { success: true, itemId: id, message: `Successfully added "${name}" to the menu.` };
+        return { success: true, itemId: id, message: `Successfully added "${itemName}" to the menu.` };
       } catch (err: any) {
         return { success: false, error: `Database write failed: ${err.message}` };
       }

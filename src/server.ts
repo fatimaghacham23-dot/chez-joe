@@ -314,9 +314,9 @@ Image Workflow Rules:
                   }
                   if (r.toolName === "addItem") {
                     addedItem = {
-                      id: r.result.itemId || r.args.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
-                      name: r.args.name,
-                      price: r.args.price,
+                      id: r.result.itemId || r.args.itemName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+                      name: r.args.itemName,
+                      price: parseFloat(String(r.args.price).replace(/[^0-9.]/g, '')) || 0,
                       desc: r.args.description,
                       tag: r.args.category,
                       imageKey: 'plated'
