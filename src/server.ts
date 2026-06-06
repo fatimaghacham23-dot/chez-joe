@@ -299,7 +299,10 @@ Safety Rules:
 - If the user has not confirmed yet, do not call the tool, or call it with isConfirmed: false so that the tool execution tells you what confirmation message to say.
 
 Image Workflow Rules:
-- Immediately after you successfully execute the addItem tool, you MUST ask the user: "I have added the item. Would you like to upload an image for [Item Name]?"`,
+- Immediately after you successfully execute the addItem tool, you MUST ask the user: "I have added the item. Would you like to upload an image for [Item Name]?"
+
+Tool Calling Schema Rules:
+- When calling the addItem tool, use exactly these fields: name (string), price (number or string), and isConfirmed (boolean).`,
           maxSteps: 5,
           onStepFinish({ toolCalls, toolResults }) {
             console.log("--- generateText Step Finished ---");
@@ -314,8 +317,8 @@ Image Workflow Rules:
                   }
                   if (r.toolName === "addItem") {
                     addedItem = {
-                      id: r.result.itemId || r.args.itemName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
-                      name: r.args.itemName,
+                      id: r.result.itemId || r.args.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+                      name: r.args.name,
                       price: parseFloat(String(r.args.price).replace(/[^0-9.]/g, '')) || 0,
                       desc: r.args.description,
                       tag: r.args.category,
