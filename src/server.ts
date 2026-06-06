@@ -257,9 +257,10 @@ export default {
 
         const { messages } = await request.json();
         const google = createGoogleGenerativeAI({ apiKey });
+        const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
 
         const result = await generateText({
-          model: google('gemini-1.5-flash'),
+          model: google(modelName),
           messages,
           tools: assistantTools,
           system: `You are the Chez Joe AI Voice Admin Assistant. You manage the restaurant menu database.
