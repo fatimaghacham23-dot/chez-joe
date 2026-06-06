@@ -257,7 +257,7 @@ export default {
 
         const { messages } = await request.json();
         const google = createGoogleGenerativeAI({ apiKey });
-        const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
+        const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
         const result = await generateText({
           model: google(modelName),

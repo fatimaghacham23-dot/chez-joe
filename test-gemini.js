@@ -31,7 +31,7 @@ async function testModel(modelName) {
 async function listModelsDirectly() {
   console.log("\nQuerying Google Models API directly for accessible models...");
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
     if (!res.ok) {
       const text = await res.text();
       console.error(`  Direct API call failed with status ${res.status}: ${text}`);
@@ -54,10 +54,10 @@ async function listModelsDirectly() {
 
 async function run() {
   const modelsToTest = [
-    "gemini-1.5-flash",
-    "models/gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-2.0-flash"
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash-latest"
   ];
 
   for (const model of modelsToTest) {
