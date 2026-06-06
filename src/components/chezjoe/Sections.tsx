@@ -258,6 +258,7 @@ export function About() {
 }
 
 export function Menu() {
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const { data: menu = [], isLoading } = useQuery<MenuItem[]>({
     queryKey: ["menu"],
     queryFn: async () => {
@@ -267,7 +268,7 @@ export function Menu() {
     }
   });
 
-  const featuredItems = menu.slice(0, 3);
+  const featuredItems = menu.slice(0, 4);
 
   return (
     <section id="menu" className="relative py-12 px-4 md:py-24 md:px-6 bg-surface overflow-hidden">
@@ -288,32 +289,37 @@ export function Menu() {
           </div>
         ) : (
           <>
-            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto text-left">
+            <div className="grid grid-cols-2 gap-4 md:gap-8 max-w-4xl mx-auto text-left">
               {featuredItems.map((m, i) => (
                 <div
                   key={m.id}
-                  className="group relative overflow-hidden rounded-2xl bg-background border border-border hover:border-gold/30 transition-colors"
+                  onClick={() => setSelectedItem(m)}
+                  className="group relative overflow-hidden rounded-2xl bg-background border border-border hover:border-gold/30 transition-colors cursor-pointer flex flex-col justify-between"
                 >
-                  <div className="overflow-hidden aspect-[4/3] relative">
-                    <img
-                      src={m.imageKey.startsWith("data:") ? m.imageKey : (IMAGE_MAP[m.imageKey] || tawookImg)}
-                      alt={m.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                    {m.isSoldOut && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <span className="px-3 py-1 bg-red-500 text-white text-[10px] uppercase tracking-[0.15em] font-bold rounded">
-                          Sold Out
-                        </span>
-                      </div>
-                    )}
+                  <div>
+                    <div className="overflow-hidden aspect-[4/3] relative">
+                      <img
+                        src={m.imageKey.startsWith("data:") ? m.imageKey : (IMAGE_MAP[m.imageKey] || tawookImg)}
+                        alt={m.name}
+                        className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-700"
+                        loading="lazy"
+                      />
+                      {m.isSoldOut && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <span className="px-2 py-1 bg-red-500 text-white text-[9px] uppercase tracking-[0.12em] font-bold rounded">
+                            Sold Out
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 sm:p-5">
+                      <p className="text-[9px] tracking-[0.25em] text-gold uppercase mb-1">{m.tag || "Specialty"}</p>
+                      <h3 className="font-display text-sm sm:text-base md:text-lg lg:text-xl mb-1 md:mb-2 leading-tight group-hover:text-gold transition-colors truncate">{m.name}</h3>
+                      <p className="text-[11px] sm:text-xs md:text-sm text-muted-foreground leading-snug line-clamp-2 mb-3">{m.desc}</p>
+                    </div>
                   </div>
-                  <div className="p-6">
-                    <p className="text-[10px] tracking-[0.3em] text-gold uppercase mb-2">{m.tag || "Specialty"}</p>
-                    <h3 className="font-display text-xl mb-2 leading-tight truncate">{m.name}</h3>
-                    <p className="text-sm text-muted-foreground leading-snug line-clamp-2 mb-4">{m.desc}</p>
-                    <span className="text-3xl md:text-4xl lg:text-5xl font-black text-gold font-mono">${m.price.toFixed(2)}</span>
+                  <div className="p-4 sm:p-5 pt-0">
+                    <span className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-gold font-mono">${m.price.toFixed(2)}</span>
                   </div>
                 </div>
               ))}
@@ -322,14 +328,18 @@ export function Menu() {
             <div className="mt-16">
               <Link
                 to="/menu"
-                className="magnetic inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gold text-[#0A0A0C] text-xs uppercase tracking-[0.2em] font-semibold hover:scale-[1.05] transition-all shadow-lg shadow-gold/10"
+                className="magnetic inline-flex items-center gap-3 px-10 py-5 rounded-full bg-gold text-[#0A0A0C] text-xs sm:text-sm uppercase tracking-[0.25em] font-bold hover:scale-[1.05] transition-all shadow-xl shadow-gold/20 hover:shadow-gold/30"
               >
-                <ShoppingBag className="w-4 h-4" /> View Full Menu
+                <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" /> View Full Menu
               </Link>
             </div>
           </>
         )}
       </div>
+
+      {selectedItem && (
+        <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
     </section>
   );
 }
